@@ -370,7 +370,7 @@ select(0);assert.deepEqual($('inspector').scroll,{behavior:'auto',block:'start'}
 const selectionBeforeReturn=selected;$('returnToMap').onclick();assert.equal(selected,selectionBeforeReturn);assert.deepEqual($('mapView').scroll,{behavior:'auto',block:'start'});
 window.matchMedia=q=>({matches:q==='(prefers-reduced-motion: reduce)'});select(1);
 assert.deepEqual(visible,[0]);assert.ok(mapHits.some(p=>p[2]===1));assert.ok(plotHits.some(p=>p[2]===1));
-assert.match($('results').children[0].textContent,/b.*outside current filter/);
+assert.match($('results').children[0]['aria-label'],/outside current filter.*Frame b/);
 assert.match($('status').textContent,/1 of 2 frames match/);
 $('locate').onclick();assert.deepEqual([view.x,view.y],geo[1]);
 assert.ok(mapHits.some(p=>p[2]===1&&p[0]===320&&p[1]===260));
@@ -462,7 +462,7 @@ const thumbnail=button.children[0];assert.equal(thumbnail.tag,'img');assert.equa
 assert.match(button['aria-label'],/Species A.*comb_DJI_a.JPG.*0.912/);
 thumbnail.onerror();assert.equal(thumbnail.hidden,true);button.onclick();assert.equal(chosen,true);
 const unknown=similarPhotoButton({key:'b',image:'javascript:alert(1)'},.2,()=>{});
-assert.equal(unknown.children.length,1);assert.equal(unknown.children[0].children[0].textContent,'Unlabelled canopy photo');
+assert.equal(unknown.children.length,1);assert.equal(unknown.children[0].children[0].textContent,'No recorded frame label');
 """
     subprocess.run(["node", "-e", helpers + checks], check=True)
 
@@ -558,5 +558,47 @@ opener.onclick();$('chooseComparison').onclick();assert.equal(selected,1);assert
 select(2);$('inspectPhoto').onclick();assert.equal($('comparisonCandidate').hidden,true);assert.equal($('photoComparisonActions').hidden,true);assert.match($('comparisonQueryStatus').textContent,/unavailable/);assert.equal(selected,2);
 $('closePhotoComparison').onclick();assert.equal(document.activeElement,$('inspectPhoto'));assert.equal(openPhotoComparison(0),false);
 assert.deepEqual(storedPhotoCandidates([{neighbours:[[1,.9],[0,.8],[8,.7],[1,NaN]]},{}],0),[[1,.9]]);
+"""
+    subprocess.run(["node", "-e", setup + script + checks], check=True)
+
+
+def test_photo_browser_reaches_all_matches_with_pinned_selection_and_stable_focus():
+    import shutil
+    import subprocess
+
+    if not shutil.which("node"):
+        pytest.skip("Node is needed to execute photo browser state")
+    html = module(ROOT / "dashboard/embedding_atlas_assets.py").HTML
+    script = html.split("<script>")[1].split("</script>")[0]
+    setup = r"""
+const assert=require('node:assert/strict'),elements=new Map();
+const context=new Proxy({}, {get:()=>()=>{}});
+function make(){return {children:[],attributes:{},clientWidth:640,clientHeight:520,value:'',style:{},contains(target){return target===this||this.children.some(child=>child.contains?.(target))},focus(options){document.activeElement=this;this.focusOptions=options},scrollIntoView(){this.scrollCalls=(this.scrollCalls||0)+1},getContext:()=>context,replaceChildren(...v){this.children=v},append(...v){this.children.push(...v)},removeAttribute(name){delete this[name]},setAttribute(name,value){this[name]=value;this.attributes[name]=value},addEventListener(){}}}
+function element(id){if(!elements.has(id))elements.set(id,make());return elements.get(id)}
+const points=Array.from({length:207},(_,i)=>({key:'frame-'+String(i).padStart(3,'0'),label:i%2===0?'Fabaceae':null,mission:'flight',image:'https://example.org/'+i+'.jpg',lat:9.1,lon:-79.8,xy:[0,0],rgb:[1,2,3],group:'pool',neighbours:[]}));
+const payload={points,provenance:{labels:{available:true},encoder:'test',versions:[],dimensions:3,projection:'PCA',input_count:points.length,excluded:{},sources:[]}};
+element('atlas-data').textContent=JSON.stringify(payload);
+global.document={getElementById:element,querySelector:()=>element('inspector'),querySelectorAll:()=>[],createElement:make};global.devicePixelRatio=1;global.location={hash:'#frame=frame-000'};global.history={replaceState(_,__,hash){location.hash=hash}};global.window={addEventListener(){},matchMedia:()=>({matches:false})};global.requestAnimationFrame=()=>{};global.Image=class{};
+"""
+    checks = r"""
+assert.equal($('browsePhotos').open,undefined);assert.equal($('results').children.length,51);
+const initialView={...view},initialHash=location.hash,seen=new Set();
+function recordPage(){const rows=$('results').children;assert.ok(rows.length<=51);assert.equal(rows.filter(row=>row['aria-pressed']==='true').length,1);assert.equal(rows[0]['data-frame'],'frame-000');assert.equal(new Set(rows.map(row=>row['data-frame'])).size,rows.length);for(const row of rows)seen.add(row['data-frame'])}
+recordPage();assert.equal($('previousBrowsePage').disabled,true);moveBrowsePage(-1);assert.equal(browsePage,0);
+$('showBrowsePhotos').onclick();assert.equal($('browsePhotos').open,true);assert.equal(document.activeElement,$('browsePhotosSummary'));assert.equal($('browsePhotosSummary').scrollCalls,1);
+while(!$('nextBrowsePage').disabled){$('nextBrowsePage').focus();$('nextBrowsePage').onclick();recordPage();assert.equal(selected,0);assert.equal(location.hash,initialHash);assert.deepEqual(view,initialView)}
+assert.equal(seen.size,207);assert.ok(seen.has('frame-206'));assert.match($('browseRange').textContent,/201 to 206 of 206.*Page 5 of 5/);assert.equal(document.activeElement,$('browseRange'));assert.deepEqual($('browseRange').focusOptions,{preventScroll:true});moveBrowsePage(1);assert.equal(browsePage,4);
+while(!$('previousBrowsePage').disabled){$('previousBrowsePage').focus();$('previousBrowsePage').onclick()}
+assert.equal(browsePage,0);assert.equal(document.activeElement,$('browseRange'));
+const thumbnail=$('results').children[0].children[0];assert.equal(thumbnail.src,'https://example.org/0.jpg');assert.equal(thumbnail.loading,'lazy');assert.equal(thumbnail.alt,'');thumbnail.onerror();assert.equal(thumbnail.hidden,true);
+$('browsePhotos').open=false;$('browsePhotos').ontoggle();assert.equal($('showBrowsePhotos')['aria-expanded'],'false');
+$('search').focus();$('search').value='frame-206';$('search').oninput();assert.equal($('browsePhotos').open,true);assert.equal(document.activeElement,$('search'));assert.equal($('browsePhotosSummary').scrollCalls,1);assert.equal(selected,0);assert.deepEqual(visible,[206]);assert.equal($('results').children.length,2);assert.equal($('previousBrowsePage').disabled,true);assert.equal($('nextBrowsePage').disabled,true);assert.match($('browseCount').textContent,/1 of 207 photos match.*outside these matches/);assert.match($('browseRange').textContent,/Matches 1 to 1 of 1/);
+$('results').children[1].onclick();assert.equal(selected,206);assert.equal(location.hash,'#frame=frame-206');assert.equal($('results').children.length,1);assert.equal($('results').children[0]['data-frame'],'frame-206');assert.match($('browseRange').textContent,/Only the selected photo matches/);
+$('search').focus();$('search').value='no-matches';$('search').oninput();assert.equal(visible.length,0);assert.equal(selected,206);assert.equal($('results').children.length,1);assert.equal($('browseEmpty').hidden,false);assert.match($('browseRange').textContent,/No matching photos/);assert.equal(document.activeElement,$('search'));assert.equal($('nextBrowsePage').disabled,true);
+$('search').value='';$('group').value='Without recorded label';$('group').focus();$('group').onchange();assert.equal(visible.length,103);assert.equal(document.activeElement,$('group'));assert.equal(browsePage,0);assert.match($('selectionStatus').textContent,/outside the current filter/);
+$('reset').onclick();assert.equal(visible.length,207);assert.equal(browsePage,0);assert.equal(selected,206);assert.equal($('search').value,'');assert.equal($('group').value,'All frames');assert.equal($('browseEmpty').hidden,true);assert.equal($('results').children[0]['data-frame'],'frame-206');assert.match($('browseCount').textContent,/207 of 207 photos match/);assert.equal($('nextBrowsePage').disabled,false);
+const unavailable=browsePhotoButton({key:'unsafe',image:'javascript:alert(1)'},false,false,()=>{});assert.equal(unavailable.children.length,1);
+assert.match(unavailable['aria-label'],/Recorded frame labels unavailable/);
+const noLabel=browsePhotoButton({key:'known-source'},false,false,()=>{},true);assert.match(noLabel['aria-label'],/No recorded frame label/);
 """
     subprocess.run(["node", "-e", setup + script + checks], check=True)
