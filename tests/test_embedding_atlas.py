@@ -224,7 +224,7 @@ const assert=require('node:assert/strict');
 let imageRequests=0,pending=[];
 const elements=new Map();
 const context=new Proxy({}, {get:()=>()=>{}});
-function element(id){if(!elements.has(id))elements.set(id,{clientWidth:640,clientHeight:520,value:'',style:{},focus(options){this.focused=true;this.focusOptions=options},scrollIntoView(options){this.scroll=options},getContext:()=>context,replaceChildren(){},append(){},removeAttribute(){},setAttribute(name,value){this[name]=value},addEventListener(){}});return elements.get(id)}
+function element(id){if(!elements.has(id))elements.set(id,{children:[],clientWidth:640,clientHeight:520,value:'',style:{},focus(options){this.focused=true;this.focusOptions=options},scrollIntoView(options){this.scroll=options},getContext:()=>context,replaceChildren(...v){this.children=v},append(...v){this.children.push(...v)},removeAttribute(){},setAttribute(name,value){this[name]=value},addEventListener(){}});return elements.get(id)}
 const payload={points:[{key:'a',lat:9.1,lon:-79.8,xy:[0,0],rgb:[1,2,3],neighbours:[],image:'https://example.org/photo.jpg',group:'Labelled'}],provenance:{encoder:'test',versions:[],dimensions:3,projection:'PCA',input_count:1,excluded:{},sources:[]}};
 element('atlas-data').textContent=JSON.stringify(payload);
 global.document={getElementById:element,querySelectorAll:()=>[],createElement:()=>element('button')};
@@ -364,9 +364,9 @@ global.document={getElementById:element,querySelector:()=>element('inspector'),q
     checks = r"""
 assert.equal($('basemap').value,'satellite');assert.deepEqual([view.x,view.y],geo[0]);assert.ok(view.scale>=256*2**17);assert.equal(visible.length,2);
 $('search').value='Species A';filter();assert.deepEqual(visible,[0]);
-$('inspector').append($('neighbors'),$('results'));const oldButton=$('neighbors').children[0].children[0];document.activeElement=oldButton;$('inspector').scrollTop=215;select(1);assert.equal(selected,1);assert.equal($('inspector').scrollTop,0);assert.equal($('inspector').focused,true);assert.deepEqual($('inspector').focusOptions,{preventScroll:true});$('inspector').scrollTop=71;select(1);assert.equal($('inspector').scrollTop,71);assert.equal($('inspector').scroll,undefined);
+const oldButton=$('results').children[0];document.activeElement=oldButton;select(1);assert.equal(selected,1);assert.equal($('results').children[0].focused,true);assert.deepEqual($('results').children[0].focusOptions,{preventScroll:true});assert.equal(atlasView,'photos');select(1);assert.equal(atlasView,'photos');
 window.matchMedia=q=>({matches:q==='(max-width: 900px)'||q==='(prefers-reduced-motion: reduce)'});
-select(0);assert.deepEqual($('inspector').scroll,{behavior:'auto',block:'start'});assert.equal($('inspector').focused,true);
+select(0);assert.equal(atlasView,'photos');assert.equal($('photosView').scroll,undefined);
 const selectionBeforeReturn=selected;$('returnToMap').onclick();assert.equal(selected,selectionBeforeReturn);assert.deepEqual($('mapView').scroll,{behavior:'auto',block:'start'});
 window.matchMedia=q=>({matches:q==='(prefers-reduced-motion: reduce)'});select(1);
 assert.deepEqual(visible,[0]);assert.ok(mapHits.some(p=>p[2]===1));assert.ok(plotHits.some(p=>p[2]===1));
@@ -378,7 +378,7 @@ $('search').value='no matches';filter();assert.equal(visible.length,0);assert.eq
 $('search').value='';$('group').value='With recorded label';filter();assert.deepEqual(visible,[0]);
 $('group').value='Without recorded label';filter();assert.deepEqual(visible,[1]);
 $('reset').onclick();assert.equal(visible.length,2);assert.equal($('search').value,'');assert.ok(view.scale<256*2**17);
-const modelLinks=['crownfirst-atlas.html','embedding-atlas.html'].map(href=>({href,getAttribute(){return this.href},setAttribute(name,value){this.href=value}}));document.querySelectorAll=()=>modelLinks;
+const modelLinks=['crownfirst-atlas.html','embedding-atlas.html'].map(href=>({href,getAttribute(){return this.href},setAttribute(name,value){this[name]=value}}));document.querySelectorAll=()=>modelLinks;
 location.hash=frameHash('crown-only');readSelection();assert.equal(selected,0);assert.equal($('key').textContent,'a');assert.match($('linkStatus').textContent,/unavailable in this model/);
 assert.equal(requestedFrameKey,'crown-only');assert.ok(modelLinks.every(link=>link.href.endsWith(frameHash('crown-only'))));
 const returnHash=modelLinks[0].href.slice(modelLinks[0].href.indexOf('#'));assert.deepEqual(frameFromHash(returnHash,[{key:'crown-only'}]),{index:0,missing:false});
@@ -409,7 +409,7 @@ assert.match(basemapSpec('satellite').attribution,/Esri, Vantor, Earthstar Geogr
     subprocess.run(["node", "-e", helpers + checks], check=True)
 
 
-def test_map_first_local_navigation_and_secondary_exploration():
+def test_photo_first_local_navigation_and_secondary_exploration():
     from html.parser import HTMLParser
 
     html = module(ROOT / "dashboard/embedding_atlas_assets.py").HTML
@@ -437,10 +437,14 @@ def test_map_first_local_navigation_and_secondary_exploration():
     )
     assert "country-nav" not in html
     assert (
-        html.index('id="mapView"') < html.index("<aside ") < html.index('id="plotView"')
+        html.index('id="photosView"') < html.index('id="locationsView"') < html.index('id="plotView"')
     )
     advanced = html.split('<details id="advanced">')[1].split("</details>")[0]
-    assert 'id="group"' in advanced and "model_health_dashboard.html" in advanced
+    assert 'id="group"' in html and "model_health_dashboard.html" in advanced
+    assert 'hidden' not in by_id['photosView'][1]
+    assert 'hidden' in by_id['locationsView'][1]
+    assert 'hidden' in by_id['modelComparisonView'][1]
+    assert by_id['showPhotosView'][1]['aria-pressed'] == 'true'
 
 
 def test_similar_photo_thumbnails_are_real_lazy_safe_and_clickable():
@@ -485,7 +489,7 @@ assert.deepEqual(selectionView(v,[.5,.8],640,520),{x:.5,y:.8,scale:1000});
     subprocess.run(["node", "-e", helpers + checks], check=True)
 
 
-def test_inspector_is_bounded_and_secondary_photo_metadata_collapsed():
+def test_primary_photo_pair_is_large_with_secondary_metadata_collapsed():
     from html.parser import HTMLParser
 
     html = module(ROOT / "dashboard/embedding_atlas_assets.py").HTML
@@ -500,23 +504,19 @@ def test_inspector_is_bounded_and_secondary_photo_metadata_collapsed():
 
     elements = Elements()
     elements.feed(html)
-    aside = next(attrs for tag, attrs in elements.tags if tag == "aside")
-    assert aside["tabindex"] == "0" and "similar photos" in aside["aria-label"]
-    for identifier in ["photoDetails", "browsePhotos", "comparison"]:
-        attrs = next(
-            attrs for tag, attrs in elements.tags if attrs.get("id") == identifier
-        )
-        assert "open" not in attrs
-    details = html.split('<details id="photoDetails">')[1].split("</details>")[0]
-    assert all(
-        'id="' + identifier + '"' in details
-        for identifier in ["key", "detail", "cropCaption"]
-    )
+    by_id = {attrs["id"]: (tag, attrs) for tag, attrs in elements.tags if "id" in attrs}
+    assert "hidden" not in by_id["photosView"][1]
+    assert "hidden" in by_id["locationsView"][1]
+    for identifier in ["photoDetails", "browsePhotos"]:
+        assert "open" not in by_id[identifier][1]
+    details = html.split('id="photoDetails"')[1].split("</details>")[0]
+    assert all('id="' + identifier + '"' in details for identifier in ["key", "detail", "cropCaption"])
     css = html.split("<style>")[1].split("</style>")[0]
-    assert '"map inspector" "plot plot"' in css
-    assert '"plot inspector"' not in css
-    assert "aside{grid-area:inspector;height:var(--explorer-height)" in css
-    assert "aside{height:auto;overflow:visible" in css
+    assert ".primary-pair{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr)" in css
+    assert "height:clamp(360px,42vh,560px)" in css
+    assert ".primary-pair{display:flex;flex-direction:column" in css
+    assert "object-fit:contain" in css
+    assert "aside{" not in css
 
 
 def test_photo_comparison_preserves_query_until_explicit_selection():
@@ -539,7 +539,7 @@ global.document={getElementById:element,querySelector:()=>element('inspector'),q
 global.devicePixelRatio=1;global.location={hash:'#frame=a'};global.history={replaceState(_,__,hash){location.hash=hash}};global.window={addEventListener(){},matchMedia:()=>({matches:false})};global.requestAnimationFrame=()=>{};global.Image=class{};
 """
     checks = r"""
-const opener=$('neighbors').children[0].children[0],queryImage=$('photo').src,queryNeighbors=$('neighbors').children,queryView={...view};
+const opener=$('workspaceEnlarge'),queryImage=$('photo').src,queryNeighbors=$('neighbors').children,queryView={...view};
 opener.focus();opener.onclick();
 assert.equal($('photoComparison').open,true);assert.equal(selected,0);assert.equal(location.hash,'#frame=a');
 assert.equal($('photo').src,queryImage);assert.equal($('neighbors').children,queryNeighbors);assert.deepEqual(view,queryView);

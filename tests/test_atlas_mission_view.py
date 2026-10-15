@@ -11,7 +11,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def run_atlas(points, checks):
+def run_atlas(points, checks, initial_hash="#frame=query"):
     if not shutil.which("node"):
         pytest.skip("Node is needed to execute mission view behavior")
     html = runpy.run_path(ROOT / "dashboard/embedding_atlas_assets.py")["HTML"]
@@ -37,7 +37,7 @@ function element(id){if(!elements.has(id))elements.set(id,make(id));return eleme
 const payload=__PAYLOAD__;
 element('atlas-data').textContent=JSON.stringify(payload);
 global.document={getElementById:element,querySelector:()=>element('inspector'),querySelectorAll:()=>[],createElement:make};global.devicePixelRatio=1;global.location={hash:'#frame=query'};global.history={replaceState(_,__,hash){location.hash=hash}};global.window={addEventListener(){},matchMedia:()=>({matches:false})};global.requestAnimationFrame=()=>{};global.Image=class{};
-""".replace("__PAYLOAD__", json.dumps(payload))
+""".replace("__PAYLOAD__", json.dumps(payload)).replace("'#frame=query'", json.dumps(initial_hash))
     subprocess.run(["node", "-e", setup + script + checks], check=True)
 
 
@@ -71,13 +71,13 @@ assert.equal(neighborMode,'all');assert.equal($('similarMissionMode').value,'all
 assert.match($('neighborSupport').textContent,/2 of 2 stored matches.*5 other photos/);
 const allButton=$('neighbors').children[0].children[0];assert.match(allButton['aria-label'],/same-one.*0.990.*Same recorded mission/);
 context('map').arcs=[];context('plot').arcs=[];draw();assert.deepEqual(context('map').arcs,[5,5,3,3,3,7]);assert.deepEqual(context('plot').arcs,[5,5,3,3,3,7]);
-allButton.onclick();assert.equal(photoComparison.mode,'all');assert.equal(photoComparison.query,0);assert.deepEqual(photoComparison.candidates,[[1,.99],[2,.98]]);assert.match($('photoComparisonScore').textContent,/0.990/);$('closePhotoComparison').onclick();
+allButton.onclick();$('workspaceEnlarge').onclick();assert.equal(photoComparison.mode,'all');assert.equal(photoComparison.query,0);assert.deepEqual(photoComparison.candidates,[[1,.99],[2,.98]]);assert.match($('photoComparisonScore').textContent,/0.990/);$('closePhotoComparison').onclick();
 const initial={selected,hash:location.hash,view:{...view},visible,rows:$('results').children};browsePage=2;
 context('map').arcs=[];context('plot').arcs=[];$('similarMissionMode').value='other';$('similarMissionMode').focus();$('similarMissionMode').onchange();
 assert.equal(selected,initial.selected);assert.equal(location.hash,initial.hash);assert.deepEqual(view,initial.view);assert.equal(visible,initial.visible);assert.equal(browsePage,2);assert.equal($('results').children,initial.rows);assert.equal(document.activeElement,$('similarMissionMode'));
 assert.deepEqual(context('map').arcs,[3,3,5,5,3,7]);assert.deepEqual(context('plot').arcs,[3,3,5,5,3,7]);
 assert.match($('neighborSupport').textContent,/2 of 2 stored matches.*2 photos with other recorded mission IDs/);
-const otherButton=$('neighbors').children[0].children[0];assert.match(otherButton['aria-label'],/other-one.*0.880.*Other recorded mission/);otherButton.onclick();
+const otherButton=$('neighbors').children[0].children[0];assert.match(otherButton['aria-label'],/other-one.*0.880.*Other recorded mission/);otherButton.onclick();$('workspaceEnlarge').onclick();
 assert.equal(photoComparison.mode,'other');assert.equal(photoComparison.query,0);assert.deepEqual(photoComparison.candidates,[[3,.88],[4,.77]]);assert.match($('photoComparisonContext').textContent,/Other missions.*do not prove different trees/);assert.match($('photoComparisonScore').textContent,/0.880/);
 $('nextComparison').onclick();assert.match($('photoComparisonScore').textContent,/0.770/);assert.equal($('nextComparison').disabled,true);$('nextComparison').onclick();assert.equal(photoComparison.rank,1);assert.equal(selected,0);assert.equal(location.hash,initial.hash);
 $('previousComparison').onclick();$('chooseComparison').onclick();assert.equal(selected,3);assert.equal(neighborMode,'other');assert.equal($('similarMissionMode').value,'other');assert.equal(location.hash,'#frame=other-one');assert.match($('neighbors').children[0].children[0]['aria-label'],/query.*Other recorded mission/);
