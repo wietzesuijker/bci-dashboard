@@ -95,31 +95,23 @@ def test_alias_collisions_invalid_vectors_and_shape_boundaries():
 
 
 def test_compact_comparison_renders_neighbor_label_and_selection():
-    import shutil
-    import subprocess
+    from test_atlas_mission_view import photo, run_atlas
 
-    if not shutil.which("node"):
-        pytest.skip("Node is needed to execute comparison UI")
-    source = (ROOT / "dashboard/embedding_atlas_assets.py").read_text()
-    function = (
-        "function compareSelection"
-        + source.split("function compareSelection")[1].split("function select(")[0]
-    )
-    setup = r"""
-const assert=require('node:assert/strict');
-const nodes=new Map();function node(){return {children:[],append(...v){this.children.push(...v)},replaceChildren(...v){this.children=v}}}
-const $=id=>{if(!nodes.has(id))nodes.set(id,node());return nodes.get(id)};
-const document={createElement:node},P=[{key:'a'},{key:'b'}];let selected=-1;function select(i){selected=i}
-const data={comparison:{cohort:[['a','Species A'],['b','Species B']],frames:[[1,[[1,0,[[1,.3]]],[1,0,[[1,.4]]]]]],models:['first','second'],k:1,cohort_size:2,labelled_cohort_support:2,labels_available:true,method:'cosine',label_boundary:'recorded',invalid_common_keys:[],unshared_counts:[0,0],sources:[]}};
-"""
     checks = r"""
+data.comparison={cohort:[['a','Species A'],['b','Species B']],frames:[[1,[[1,0,[[1,.3]]],[1,0,[[1,.4]]]]]],models:['first','second'],k:1,cohort_size:2,labelled_cohort_support:2,labels_available:true,method:'cosine',label_boundary:'recorded',invalid_common_keys:[],unshared_counts:[0,0],sources:[]};
 compareSelection('a');
+assert.match($('modelComparisonQueryLabel').textContent,/Species A/);
 assert.match($('comparisonSummary').textContent,/1 of 1 nearest frames shared/);
 const model=$('comparisonModels').children[0];
 assert.match(model.children[1].textContent,/0 of 1 labelled neighbors/);
 const button=model.children[2].children[0].children[0];
-assert.match(button.textContent,/Species B.*0.300.*b/);
+assert.match(button.textContent,/Select this photo: Species B.*b.*Shared-cohort cosine 0.300/);
 button.onclick();assert.equal(selected,1);
+assert.equal(document.activeElement,$('modelComparisonQueryKey'));
 compareSelection('outside');assert.match($('comparisonSummary').textContent,/outside the shared/);
 """
-    subprocess.run(["node", "-e", setup + function + checks], check=True)
+    run_atlas(
+        [photo("a", "mission", label="Species A"), photo("b", "mission", label="Species B")],
+        checks,
+        initial_hash="#frame=a",
+    )
