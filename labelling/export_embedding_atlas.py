@@ -163,16 +163,29 @@ def export(
     colors = np.clip(
         (projected - bounds[0]) / np.maximum(bounds[1] - bounds[0], 1e-12), 0, 1
     )
+    missions = np.asarray(
+        [p["mission"].strip() if isinstance(p["mission"], str) else "" for p in records]
+    )
     for start in range(0, len(x), 128):
         similarity = x[start : start + 128] @ x.T
         for offset, scores in enumerate(similarity):
             i = start + offset
             scores[i] = -np.inf
             near = np.argsort(-scores, kind="stable")[: min(neighbours, len(x) - 1)]
+            other_mission_neighbours = None
+            if missions[i]:
+                eligible = np.flatnonzero((missions != "") & (missions != missions[i]))
+                ranked = eligible[
+                    np.argsort(-scores[eligible], kind="stable")[:neighbours]
+                ]
+                other_mission_neighbours = [
+                    [int(j), round(float(scores[j]), 5)] for j in ranked
+                ]
             records[i].update(
                 xy=projected[i, :2].round(7).tolist(),
                 rgb=(55 + colors[i] * 175).astype(int).tolist(),
                 neighbours=[[int(j), round(float(scores[j]), 5)] for j in near],
+                other_mission_neighbours=other_mission_neighbours,
             )
     return {
         "points": records,
@@ -185,6 +198,7 @@ def export(
             "pca_explained_variance": explained[:3].round(8).tolist(),
             "projection": "PCA of L2-normalized vectors, fitted on this pool",
             "position": "Aircraft camera positions, not crown centroids",
+            "other_mission_neighbours": "Cosine-ranked from the full valid positioned pool, restricted to other known mission IDs (trimmed strings); unknown query mission is unavailable (null), unknown candidate missions are excluded; different mission IDs do not imply distinct trees or independent biological evidence",
             "excluded": excluded,
             "input_count": len(seen),
             "labels": {

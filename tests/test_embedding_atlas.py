@@ -462,7 +462,7 @@ const thumbnail=button.children[0];assert.equal(thumbnail.tag,'img');assert.equa
 assert.match(button['aria-label'],/Species A.*comb_DJI_a.JPG.*0.912/);
 thumbnail.onerror();assert.equal(thumbnail.hidden,true);button.onclick();assert.equal(chosen,true);
 const unknown=similarPhotoButton({key:'b',image:'javascript:alert(1)'},.2,()=>{});
-assert.equal(unknown.children.length,1);assert.equal(unknown.children[0].children[0].textContent,'Unlabelled canopy photo');
+assert.equal(unknown.children.length,1);assert.equal(unknown.children[0].children[0].textContent,'No recorded frame label');
 """
     subprocess.run(["node", "-e", helpers + checks], check=True)
 
