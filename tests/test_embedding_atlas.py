@@ -124,3 +124,22 @@ def test_atlas_has_styles_for_its_own_classes():
     css = html.split('<style>')[1].split('</style>')[0]
     classes = {c for match in re.findall(r'class="([\w -]+)"', html) for c in match.split()}
     assert classes <= set(re.findall(r'\.([a-zA-Z][\w-]*)', css))
+
+
+def test_stable_frame_url_encoding_and_unknown_key_fallback():
+    import shutil
+    import subprocess
+    if not shutil.which('node'):
+        pytest.skip('Node is needed to execute browser URL helpers')
+    html = module(ROOT / 'dashboard/embedding_atlas_assets.py').HTML
+    helpers = html.split('// URL_HELPERS_START')[1].split('// URL_HELPERS_END')[0]
+    checks = r'''
+const assert = require('node:assert/strict');
+const key = 'comb_frame + #&/é.JPG';
+const points = [{key:'first'}, {key}];
+assert.deepEqual(frameFromHash(frameHash(key), points), {index:1,missing:false});
+assert.deepEqual(frameFromHash('#frame=unknown', points), {index:0,missing:true});
+assert.deepEqual(frameFromHash('', points), {index:0,missing:false});
+assert.deepEqual(frameFromHash('#frame=%E0%A4%A', points), {index:0,missing:true});
+'''
+    subprocess.run(['node', '-e', helpers + checks], check=True)
