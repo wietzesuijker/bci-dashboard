@@ -364,7 +364,7 @@ global.document={getElementById:element,querySelector:()=>element('inspector'),q
     checks = r"""
 assert.equal($('basemap').value,'satellite');assert.deepEqual([view.x,view.y],geo[0]);assert.ok(view.scale>=256*2**17);assert.equal(visible.length,2);
 $('search').value='Species A';filter();assert.deepEqual(visible,[0]);
-$('inspector').append($('neighbors'),$('results'));const oldButton=$('neighbors').children[0].children[0];document.activeElement=oldButton;$('inspector').scrollTop=215;oldButton.onclick();assert.equal(selected,1);assert.equal($('inspector').scrollTop,0);assert.equal($('inspector').focused,true);assert.deepEqual($('inspector').focusOptions,{preventScroll:true});$('inspector').scrollTop=71;select(1);assert.equal($('inspector').scrollTop,71);assert.equal($('inspector').scroll,undefined);
+$('inspector').append($('neighbors'),$('results'));const oldButton=$('neighbors').children[0].children[0];document.activeElement=oldButton;$('inspector').scrollTop=215;select(1);assert.equal(selected,1);assert.equal($('inspector').scrollTop,0);assert.equal($('inspector').focused,true);assert.deepEqual($('inspector').focusOptions,{preventScroll:true});$('inspector').scrollTop=71;select(1);assert.equal($('inspector').scrollTop,71);assert.equal($('inspector').scroll,undefined);
 window.matchMedia=q=>({matches:q==='(max-width: 900px)'||q==='(prefers-reduced-motion: reduce)'});
 select(0);assert.deepEqual($('inspector').scroll,{behavior:'auto',block:'start'});assert.equal($('inspector').focused,true);
 const selectionBeforeReturn=selected;$('returnToMap').onclick();assert.equal(selected,selectionBeforeReturn);assert.deepEqual($('mapView').scroll,{behavior:'auto',block:'start'});
@@ -517,3 +517,46 @@ def test_inspector_is_bounded_and_secondary_photo_metadata_collapsed():
     assert '"plot inspector"' not in css
     assert "aside{grid-area:inspector;height:var(--explorer-height)" in css
     assert "aside{height:auto;overflow:visible" in css
+
+
+def test_photo_comparison_preserves_query_until_explicit_selection():
+    import shutil
+    import subprocess
+
+    if not shutil.which("node"):
+        pytest.skip("Node is needed to execute photo comparison state")
+    html = module(ROOT / "dashboard/embedding_atlas_assets.py").HTML
+    script = html.split("<script>")[1].split("</script>")[0]
+    setup = r"""
+const assert=require('node:assert/strict'),elements=new Map();
+const context=new Proxy({}, {get:()=>()=>{}});
+function make(){return {children:[],attributes:{},isConnected:true,clientWidth:640,clientHeight:520,value:'',style:{},contains(target){return target===this||this.children.some(child=>child.contains?.(target))},focus(){document.activeElement=this},scrollIntoView(){},getContext:()=>context,replaceChildren(...v){this.children=v},append(...v){this.children.push(...v)},getAttribute(name){return this.attributes[name]??null},removeAttribute(name){delete this[name];delete this.attributes[name]},setAttribute(name,value){this[name]=value;this.attributes[name]=value},addEventListener(){},showModal(){this.open=true},close(){this.open=false;this.onclose?.()}}}
+function element(id){if(!elements.has(id)){const node=make();if(id.endsWith('Overlay'))node.attributes.hidden='';elements.set(id,node)}return elements.get(id)}
+const shared={lat:9.1,lon:-79.8,xy:[0,0],rgb:[1,2,3],group:'pool'};
+const payload={points:[{...shared,key:'a',label:'Luehea seemannii',mission:'flight-a',image:'https://example.org/a.jpg',source_width:4000,source_height:3000,crop:1280,neighbours:[[1,.9],[2,.8]]},{...shared,key:'b',label:'Luehea',mission:'flight-b',image:'https://example.org/b.jpg',neighbours:[[0,.9]]},{...shared,key:'c',image:'javascript:alert(1)',neighbours:[]}],provenance:{labels:{available:true},encoder:'test',versions:[],dimensions:3,projection:'PCA',input_count:3,excluded:{},sources:[]}};
+element('atlas-data').textContent=JSON.stringify(payload);
+global.document={getElementById:element,querySelector:()=>element('inspector'),querySelectorAll:()=>[],createElement:make};
+global.devicePixelRatio=1;global.location={hash:'#frame=a'};global.history={replaceState(_,__,hash){location.hash=hash}};global.window={addEventListener(){},matchMedia:()=>({matches:false})};global.requestAnimationFrame=()=>{};global.Image=class{};
+"""
+    checks = r"""
+const opener=$('neighbors').children[0].children[0],queryImage=$('photo').src,queryNeighbors=$('neighbors').children,queryView={...view};
+opener.focus();opener.onclick();
+assert.equal($('photoComparison').open,true);assert.equal(selected,0);assert.equal(location.hash,'#frame=a');
+assert.equal($('photo').src,queryImage);assert.equal($('neighbors').children,queryNeighbors);assert.deepEqual(view,queryView);
+assert.equal($('comparisonQueryImage').src,'https://example.org/a.jpg');assert.equal($('comparisonCandidateImage').src,'https://example.org/b.jpg');
+assert.match($('comparisonQueryLabel').textContent,/Luehea seemannii/);assert.match($('comparisonCandidateLabel').textContent,/Recorded frame label: Luehea$/);
+assert.match($('comparisonCandidateKey').textContent,/flight-b/);assert.match($('photoComparisonScore').textContent,/not identification probability/);
+assert.match($('comparisonCandidateCrop').textContent,/unknown/);$('comparisonQueryImage').onload();assert.equal($('comparisonQueryOverlay').getAttribute('hidden'),null);
+assert.equal($('previousComparison').disabled,true);assert.equal($('nextComparison').disabled,false);
+$('nextComparison').onclick();assert.equal(selected,0);assert.equal(location.hash,'#frame=a');assert.equal($('nextComparison').disabled,true);
+assert.equal($('comparisonCandidateImage').src,undefined);assert.equal($('comparisonCandidateOriginal').href,undefined);assert.equal($('comparisonCandidateOriginal').hidden,true);
+assert.match($('comparisonCandidateStatus').textContent,/unavailable/);assert.match($('comparisonCandidateLabel').textContent,/No recorded frame label/);
+$('nextComparison').onclick();assert.match($('photoComparisonRank').textContent,/Candidate 2 of 2/);
+$('previousComparison').onclick();$('comparisonCandidateImage').onerror();assert.equal($('comparisonCandidateImage').hidden,true);assert.match($('comparisonCandidateStatus').textContent,/unavailable/);
+$('closePhotoComparison').onclick();assert.equal(selected,0);assert.equal(location.hash,'#frame=a');assert.equal(document.activeElement,opener);assert.equal(photoComparison,null);
+opener.onclick();$('chooseComparison').onclick();assert.equal(selected,1);assert.equal(location.hash,'#frame=b');assert.equal($('photoComparison').open,false);assert.equal(photoComparison,null);
+select(2);$('inspectPhoto').onclick();assert.equal($('comparisonCandidate').hidden,true);assert.equal($('photoComparisonActions').hidden,true);assert.match($('comparisonQueryStatus').textContent,/unavailable/);assert.equal(selected,2);
+$('closePhotoComparison').onclick();assert.equal(document.activeElement,$('inspectPhoto'));assert.equal(openPhotoComparison(0),false);
+assert.deepEqual(storedPhotoCandidates([{neighbours:[[1,.9],[0,.8],[8,.7],[1,NaN]]},{}],0),[[1,.9]]);
+"""
+    subprocess.run(["node", "-e", setup + script + checks], check=True)
