@@ -378,6 +378,11 @@ $('search').value='no matches';filter();assert.equal(visible.length,0);assert.eq
 $('search').value='';$('group').value='With recorded label';filter();assert.deepEqual(visible,[0]);
 $('group').value='Without recorded label';filter();assert.deepEqual(visible,[1]);
 $('reset').onclick();assert.equal(visible.length,2);assert.equal($('search').value,'');assert.ok(view.scale<256*2**17);
+const modelLinks=['crownfirst-atlas.html','embedding-atlas.html'].map(href=>({href,getAttribute(){return this.href},setAttribute(name,value){this.href=value}}));document.querySelectorAll=()=>modelLinks;
+location.hash=frameHash('crown-only');readSelection();assert.equal(selected,0);assert.equal($('key').textContent,'a');assert.match($('linkStatus').textContent,/unavailable in this model/);
+assert.equal(requestedFrameKey,'crown-only');assert.ok(modelLinks.every(link=>link.href.endsWith(frameHash('crown-only'))));
+const returnHash=modelLinks[0].href.slice(modelLinks[0].href.indexOf('#'));assert.deepEqual(frameFromHash(returnHash,[{key:'crown-only'}]),{index:0,missing:false});
+select(1);assert.equal(requestedFrameKey,null);assert.ok(modelLinks.every(link=>link.href.endsWith(frameHash('b'))));assert.equal($('linkStatus').textContent,'');
 """
     subprocess.run(["node", "-e", setup + script + checks], check=True)
 
