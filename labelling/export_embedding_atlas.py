@@ -13,6 +13,20 @@ def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def canonical_key(key):
+    return key.removeprefix("comb_").removesuffix(".JPG")
+
+
+def canonical_index(keys):
+    index = {}
+    for key in keys:
+        alias = canonical_key(key)
+        if alias in index:
+            raise ValueError("Canonical key collision: " + alias)
+        index[alias] = key
+    return index
+
+
 def load_labels(path):
     """Read recorded botanist frame labels with exact, unique source keys."""
     if not path.exists():
@@ -58,26 +72,11 @@ def export(
             raise ValueError(
                 "An explicit encoder label is required for crownfirst artifacts"
             )
-        canonical = {}
-
-        def canonical_key(key):
-            return key.removeprefix("comb_").removesuffix(".JPG")
-
-        for key in inventory:
-            alias = canonical_key(key)
-            if alias in canonical:
-                raise ValueError("Canonical inventory key collision: " + alias)
-            canonical[alias] = key
+        canonical = canonical_index(inventory)
         external = json.loads(Path(crownfirst_embeddings).read_text())
-        aliases = set()
-        keys, vectors_external = [], []
-        for key, vector in external.items():
-            alias = canonical_key(key)
-            if alias in aliases:
-                raise ValueError("Canonical embedding key collision: " + alias)
-            aliases.add(alias)
-            keys.append(canonical.get(alias, key))
-            vectors_external.append(vector)
+        canonical_index(external)
+        keys = [canonical.get(canonical_key(key), key) for key in external]
+        vectors_external = list(external.values())
         matrix = np.asarray(vectors_external, dtype=np.float64)
         sources.append(
             {
@@ -140,6 +139,8 @@ def export(
                     "image": row.get("row_data", ""),
                     "mission": row.get("metadata", {}).get("mission", ""),
                     "crop": meta.get("crop_size"),
+                    "source_width": meta.get("orig_width"),
+                    "source_height": meta.get("orig_height"),
                     "version": version,
                 }
             )

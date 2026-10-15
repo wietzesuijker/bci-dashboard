@@ -183,11 +183,12 @@ def test_duplicate_botanist_label_keys_fail(tmp_path, second):
 def test_map_zoom_pan_and_tile_work_remain_bounded():
     import shutil
     import subprocess
-    if not shutil.which('node'):
-        pytest.skip('Node is needed to execute map geometry helpers')
-    html = module(ROOT / 'dashboard/embedding_atlas_assets.py').HTML
-    helpers = html.split('// MAP_HELPERS_START')[1].split('// MAP_HELPERS_END')[0]
-    checks = r'''
+
+    if not shutil.which("node"):
+        pytest.skip("Node is needed to execute map geometry helpers")
+    html = module(ROOT / "dashboard/embedding_atlas_assets.py").HTML
+    helpers = html.split("// MAP_HELPERS_START")[1].split("// MAP_HELPERS_END")[0]
+    checks = r"""
 const assert=require('node:assert/strict');
 let v={x:.5,y:.5,scale:256*2**17};
 for(let i=0;i<2000;i++)v=boundedView({...v,scale:v.scale/1.6},640,520);
@@ -206,31 +207,32 @@ for(const p of [{lat:90,lon:180},{lat:-90,lon:-180},{lat:NaN,lon:Infinity}]){
 }
 const cache=new Map();for(let i=0;i<2000;i++)cacheTile(cache,String(i),{});
 assert.ok(cache.size<=256);
-'''
-    subprocess.run(['node', '-e', helpers + checks], check=True)
+"""
+    subprocess.run(["node", "-e", helpers + checks], check=True)
 
 
 def test_failed_tiles_and_photo_keep_selection_usable_without_retry_loop():
     import shutil
     import subprocess
-    if not shutil.which('node'):
-        pytest.skip('Node is needed to execute network failure handling')
-    html = module(ROOT / 'dashboard/embedding_atlas_assets.py').HTML
-    script = html.split('<script>')[1].split('</script>')[0]
-    setup = r'''
+
+    if not shutil.which("node"):
+        pytest.skip("Node is needed to execute network failure handling")
+    html = module(ROOT / "dashboard/embedding_atlas_assets.py").HTML
+    script = html.split("<script>")[1].split("</script>")[0]
+    setup = r"""
 const assert=require('node:assert/strict');
 let imageRequests=0,pending=[];
 const elements=new Map();
 const context=new Proxy({}, {get:()=>()=>{}});
-function element(id){if(!elements.has(id))elements.set(id,{clientWidth:640,clientHeight:520,value:'',getContext:()=>context,replaceChildren(){},append(){},removeAttribute(){},setAttribute(){},addEventListener(){}});return elements.get(id)}
+function element(id){if(!elements.has(id))elements.set(id,{clientWidth:640,clientHeight:520,value:'',style:{},getContext:()=>context,replaceChildren(){},append(){},removeAttribute(){},setAttribute(){},addEventListener(){}});return elements.get(id)}
 const payload={points:[{key:'a',lat:9.1,lon:-79.8,xy:[0,0],rgb:[1,2,3],neighbours:[],image:'https://example.org/photo.jpg',group:'Labelled'}],provenance:{encoder:'test',versions:[],dimensions:3,projection:'PCA',input_count:1,excluded:{},sources:[]}};
 element('atlas-data').textContent=JSON.stringify(payload);
 global.document={getElementById:element,querySelectorAll:()=>[],createElement:()=>element('button')};
 global.devicePixelRatio=1;global.location={hash:''};global.history={replaceState(){}};global.window={addEventListener(){}};
 global.requestAnimationFrame=f=>{pending.push(f)};
 global.Image=class{set src(v){imageRequests++;this.complete=true;this.naturalWidth=0;if(this.onerror)this.onerror()}};
-'''
-    checks = r'''
+"""
+    checks = r"""
 const requestsAfterInitialDraw=imageRequests;
 for(let i=0;i<20&&pending.length;i++)pending.shift()();
 assert.equal(imageRequests,requestsAfterInitialDraw);
@@ -240,5 +242,81 @@ assert.equal(element('key').textContent,'a');
 element('photo').onerror();
 assert.equal(element('photo').hidden,true);
 assert.match(element('photoStatus').textContent,/Photo unavailable/);
-'''
-    subprocess.run(['node', '-e', setup + script + checks], check=True)
+"""
+    subprocess.run(["node", "-e", setup + script + checks], check=True)
+
+
+def test_recorded_crop_geometry_and_unknown_external_footprint():
+    import shutil
+    import subprocess
+
+    if not shutil.which("node"):
+        pytest.skip("Node is needed to execute recorded crop geometry")
+    html = module(ROOT / "dashboard/embedding_atlas_assets.py").HTML
+    helpers = html.split("// CROP_HELPERS_START")[1].split("// CROP_HELPERS_END")[0]
+    checks = r"""
+const assert=require('node:assert/strict');
+assert.deepEqual(recordedCrop({source_width:4000,source_height:3000,crop:1280}),{width:4000,height:3000,x:1360,y:860,side:1280});
+assert.deepEqual(recordedCrop({source_width:2001,source_height:1501,crop:1000}),{width:2001,height:1501,x:500,y:250,side:1000});
+assert.equal(recordedCrop({}),null);
+assert.equal(recordedCrop({source_width:4000,source_height:3000,crop:5000}),null);
+assert.equal(recordedCrop({source_width:NaN,source_height:3000,crop:1280}),null);
+"""
+    subprocess.run(["node", "-e", helpers + checks], check=True)
+
+
+def test_comparison_requires_matching_embedding_and_label_sources(tmp_path):
+    validate = module(ROOT / "dashboard/build_embedding_atlas.py").validate_comparison
+    sources = [
+        {"file": "embeddings_labelled/embeddings.npz", "sha256": "a"},
+        {"file": "plantclef.json", "sha256": "b"},
+        {"file": "gt_dominant_taxon.csv", "sha256": "c"},
+    ]
+    comparison = {"sources": sources, "labels_available": True}
+    for embedding in sources[:2]:
+        atlas = {
+            "provenance": {
+                "sources": [embedding, sources[2]],
+                "labels": {"available": True},
+            }
+        }
+        validate(atlas, comparison)
+        for wrong in [
+            {"sources": sources[1:], "labels_available": True},
+            {
+                "sources": [dict(s, sha256="wrong") for s in sources],
+                "labels_available": True,
+            },
+        ]:
+            if (
+                embedding["file"] == "plantclef.json"
+                and wrong["sources"] == sources[1:]
+            ):
+                continue
+            with pytest.raises(ValueError, match="source"):
+                validate(atlas, wrong)
+    atlas = {
+        "provenance": {"sources": [sources[0], dict(sources[2], sha256="new-labels")]}
+    }
+    with pytest.raises(ValueError, match="hash mismatch.*gt_dominant_taxon"):
+        validate(atlas, comparison)
+
+
+def test_export_preserves_recorded_dimensions_without_defaults(tmp_path):
+    fixture_pool(tmp_path)
+    cache = tmp_path / "embeddings_labelled/cache/a.json"
+    cache.write_text(
+        json.dumps(
+            {
+                "version": "test-encoder",
+                "orig_width": 3001,
+                "orig_height": 2001,
+                "crop_size": 1111,
+            }
+        )
+    )
+    result = module(ROOT / "labelling/export_embedding_atlas.py").export(tmp_path)
+    assert {
+        k: result["points"][0][k] for k in ["source_width", "source_height", "crop"]
+    } == {"source_width": 3001, "source_height": 2001, "crop": 1111}
+    assert result["points"][1]["source_width"] is None
