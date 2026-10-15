@@ -320,3 +320,35 @@ def test_export_preserves_recorded_dimensions_without_defaults(tmp_path):
         k: result["points"][0][k] for k in ["source_width", "source_height", "crop"]
     } == {"source_width": 3001, "source_height": 2001, "crop": 1111}
     assert result["points"][1]["source_width"] is None
+
+
+def test_selected_neighbor_outside_filter_stays_plotted_listed_and_locatable():
+    import shutil
+    import subprocess
+
+    if not shutil.which("node"):
+        pytest.skip("Node is needed to execute selection and filter behavior")
+    html = module(ROOT / "dashboard/embedding_atlas_assets.py").HTML
+    script = html.split("<script>")[1].split("</script>")[0]
+    setup = r"""
+const assert=require('node:assert/strict'),elements=new Map();
+const context=new Proxy({}, {get:()=>()=>{}});
+function make(){return {children:[],clientWidth:640,clientHeight:520,value:'',style:{},getContext:()=>context,replaceChildren(...v){this.children=v},append(...v){this.children.push(...v)},removeAttribute(){},setAttribute(){},addEventListener(){}}}
+function element(id){if(!elements.has(id))elements.set(id,make());return elements.get(id)}
+const payload={points:[{key:'a',label:'Species A',lat:9.1,lon:-79.8,xy:[0,0],rgb:[1,2,3],neighbours:[[1,.9]],image:'https://example.org/a.jpg',group:'Crownfirst pool'},{key:'b',label:null,lat:9.2,lon:-79.9,xy:[1,1],rgb:[3,2,1],neighbours:[[0,.9]],image:'https://example.org/b.jpg',group:'Crownfirst pool'}],provenance:{encoder:'test',versions:[],dimensions:3,projection:'PCA',input_count:2,excluded:{},sources:[]}};
+element('atlas-data').textContent=JSON.stringify(payload);
+global.document={getElementById:element,querySelectorAll:()=>[],createElement:make};global.devicePixelRatio=1;global.location={hash:''};global.history={replaceState(){}};global.window={addEventListener(){}};global.requestAnimationFrame=()=>{};global.Image=class{};
+"""
+    checks = r"""
+$('search').value='Species A';filter();assert.deepEqual(visible,[0]);
+$('neighbors').children[0].children[0].onclick();assert.equal(selected,1);
+assert.deepEqual(visible,[0]);assert.ok(mapHits.some(p=>p[2]===1));assert.ok(plotHits.some(p=>p[2]===1));
+assert.match($('results').children[0].textContent,/b.*outside current filter/);
+assert.match($('status').textContent,/1 of 2 frames match/);
+$('locate').onclick();assert.deepEqual([view.x,view.y],geo[1]);
+assert.ok(mapHits.some(p=>p[2]===1&&p[0]===320&&p[1]===260));
+$('search').value='no matches';filter();assert.equal(visible.length,0);assert.equal(mapHits.length,1);assert.equal(plotHits.length,1);assert.equal($('results').children.length,1);
+$('search').value='';$('group').value='With recorded label';filter();assert.deepEqual(visible,[0]);
+$('group').value='Without recorded label';filter();assert.deepEqual(visible,[1]);
+"""
+    subprocess.run(["node", "-e", setup + script + checks], check=True)
