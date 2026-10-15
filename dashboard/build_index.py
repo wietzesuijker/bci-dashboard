@@ -35,6 +35,11 @@ PAGES = [
      "reasoning behind that order."),
 ]
 
+OPTIONAL_PAGES = [
+    ("embedding-atlas.html", "Explore Pl@ntNet frame representations", "Link camera positions to visual relationships and inspect similar frames."),
+    ("crownfirst-atlas.html", "Explore Crownfirst canopy representations", "Inspect the separate PlantCLEF canopy feature space across BCI camera positions."),
+]
+
 STYLE = """*{box-sizing:border-box;margin:0;padding:0}
 body{
   font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
@@ -74,7 +79,8 @@ def build_stamp(text: str) -> str:
 def build(build_dir: str) -> str:
     cards = []
     stamp = ""
-    for name, title, blurb in PAGES:
+    available = PAGES + [page for page in OPTIONAL_PAGES if os.path.isfile(os.path.join(build_dir, page[0]))]
+    for name, title, blurb in available:
         path = os.path.join(build_dir, name)
         with open(path, encoding="utf-8") as fh:
             stamp = stamp or build_stamp(fh.read())

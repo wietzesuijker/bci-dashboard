@@ -99,3 +99,15 @@ def test_it_claims_nothing_the_pages_have_to_back_up(build_index, tmp_path):
     assert "measurement pass" not in out
     assert "latest state" not in out
     assert "<p" not in out
+
+
+def test_optional_atlas_cards_only_when_built(build_index, tmp_path):
+    fake_build(tmp_path)
+    out = build_index.build(str(tmp_path))
+    assert 'href="embedding-atlas.html"' not in out
+    (tmp_path / 'embedding-atlas.html').write_text('<html>Atlas</html>')
+    out = build_index.build(str(tmp_path))
+    assert 'href="embedding-atlas.html"' in out
+    assert 'href="crownfirst-atlas.html"' not in out
+    (tmp_path / 'crownfirst-atlas.html').write_text('<html>Canopy</html>')
+    assert 'href="crownfirst-atlas.html"' in build_index.build(str(tmp_path))

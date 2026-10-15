@@ -23,6 +23,14 @@ for f in $PAGES; do
   [ -s "$BUILD/$f" ] || { echo "publish: $BUILD/$f is missing or empty; run bin/refresh.sh first" >&2; exit 1; }
 done
 
+# Atlas pages embed only derived projection coordinates, colors and neighbors.
+# Raw embedding matrices and intermediate JSON exports are never copied.
+for f in embedding-atlas.html crownfirst-atlas.html; do
+  if [ -s "$BUILD/$f" ]; then
+    PAGES="$PAGES $f"
+  fi
+done
+
 mkdir -p "$DOCS"
 # .nojekyll or Pages runs the files through Jekyll, which drops anything whose
 # name starts with an underscore and rewrites nothing else usefully.

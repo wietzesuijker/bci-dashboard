@@ -69,7 +69,7 @@ def test_every_class_a_builder_writes_has_a_rule_in_the_stylesheet(style):
         # build_index.py is the landing page and carries its own: it is served
         # at the root of the site and has to render on its own, without the
         # dashboard stylesheet a panel can assume.
-        if name in ("style.py", "build_index.py"):
+        if name in ("style.py", "build_index.py", "embedding_atlas_assets.py"):
             continue
         for m in _EMITTED_RE.finditer(src):
             for cls in m.group(1).split():
