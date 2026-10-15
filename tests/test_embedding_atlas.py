@@ -224,7 +224,7 @@ const assert=require('node:assert/strict');
 let imageRequests=0,pending=[];
 const elements=new Map();
 const context=new Proxy({}, {get:()=>()=>{}});
-function element(id){if(!elements.has(id))elements.set(id,{children:[],clientWidth:640,clientHeight:520,value:'',style:{},focus(options){this.focused=true;this.focusOptions=options},scrollIntoView(options){this.scroll=options},getContext:()=>context,replaceChildren(...v){this.children=v},append(...v){this.children.push(...v)},removeAttribute(){},setAttribute(name,value){this[name]=value},addEventListener(){}});return elements.get(id)}
+function element(id){if(!elements.has(id))elements.set(id,{children:[],clientWidth:640,clientHeight:520,value:'',style:{},focus(options){this.focused=true;this.focusOptions=options},scrollIntoView(options){this.scroll=options},getContext:()=>context,replaceChildren(...v){this.children=v},append(...v){this.children.push(...v)},removeAttribute(){},setAttribute(name,value){this[name]=value},getAttribute(name){return this[name]??null},addEventListener(){}});return elements.get(id)}
 const payload={points:[{key:'a',lat:9.1,lon:-79.8,xy:[0,0],rgb:[1,2,3],neighbours:[],image:'https://example.org/photo.jpg',group:'Labelled'}],provenance:{encoder:'test',versions:[],dimensions:3,projection:'PCA',input_count:1,excluded:{},sources:[]}};
 element('atlas-data').textContent=JSON.stringify(payload);
 global.document={getElementById:element,querySelectorAll:()=>[],createElement:()=>element('button')};
@@ -546,7 +546,7 @@ assert.equal($('photo').src,queryImage);assert.equal($('neighbors').children,que
 assert.equal($('comparisonQueryImage').src,'https://example.org/a.jpg');assert.equal($('comparisonCandidateImage').src,'https://example.org/b.jpg');
 assert.match($('comparisonQueryLabel').textContent,/Luehea seemannii/);assert.match($('comparisonCandidateLabel').textContent,/Recorded frame label: Luehea$/);
 assert.match($('comparisonCandidateKey').textContent,/flight-b/);assert.match($('photoComparisonScore').textContent,/not identification probability/);
-assert.match($('comparisonCandidateCrop').textContent,/unknown/);$('comparisonQueryImage').onload();assert.equal($('comparisonQueryOverlay').getAttribute('hidden'),null);
+assert.match($('comparisonCandidateCrop').textContent,/unknown/);$('comparisonQueryImage').naturalWidth=4000;$('comparisonQueryImage').naturalHeight=3000;$('comparisonQueryImage').onload();assert.equal($('comparisonQueryOverlay').getAttribute('hidden'),null);
 assert.equal($('previousComparison').disabled,true);assert.equal($('nextComparison').disabled,false);
 $('nextComparison').onclick();assert.equal(selected,0);assert.equal(location.hash,'#frame=a');assert.equal($('nextComparison').disabled,true);
 assert.equal($('comparisonCandidateImage').src,undefined);assert.equal($('comparisonCandidateOriginal').href,undefined);assert.equal($('comparisonCandidateOriginal').hidden,true);
