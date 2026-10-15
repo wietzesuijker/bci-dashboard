@@ -400,7 +400,7 @@ assert.match(basemapSpec('satellite').attribution,/Esri, Vantor, Earthstar Geogr
     subprocess.run(["node", "-e", helpers + checks], check=True)
 
 
-def test_map_first_country_navigation_and_secondary_exploration():
+def test_map_first_local_navigation_and_secondary_exploration():
     from html.parser import HTMLParser
 
     html = module(ROOT / "dashboard/embedding_atlas_assets.py").HTML
@@ -422,13 +422,37 @@ def test_map_first_country_navigation_and_secondary_exploration():
     assert "open" not in by_id["advanced"][1]
     assert "Panama · Forest canopy explorer" in html
     assert "Barro Colorado Island" in html
-    assert any(
-        attrs.get("href")
-        == "https://wietzesuijker.github.io/what-to-id/embeddings.html"
+    assert not any(
+        attrs.get("href", "").startswith("https://wietzesuijker.github.io/what-to-id/")
         for _, attrs in elements.tags
     )
+    assert "country-nav" not in html
     assert (
         html.index('id="mapView"') < html.index("<aside>") < html.index('id="plotView"')
     )
     advanced = html.split('<details id="advanced">')[1].split("</details>")[0]
     assert 'id="group"' in advanced and "model_health_dashboard.html" in advanced
+
+
+def test_similar_photo_thumbnails_are_real_lazy_safe_and_clickable():
+    import shutil
+    import subprocess
+
+    if not shutil.which("node"):
+        pytest.skip("Node is needed to execute similar photo rendering")
+    html = module(ROOT / "dashboard/embedding_atlas_assets.py").HTML
+    helpers = html.split("// SIMILAR_PHOTO_HELPERS_START")[1].split(
+        "// SIMILAR_PHOTO_HELPERS_END"
+    )[0]
+    checks = r"""
+const assert=require('node:assert/strict');
+const document={createElement:tag=>({tag,children:[],setAttribute(n,v){this[n]=v},append(...v){this.children.push(...v)}})};
+let chosen=false;const image='https://example.org/original.JPG';
+const button=similarPhotoButton({key:'comb_DJI_a.JPG',label:'Species A',image},.91234,()=>chosen=true);
+const thumbnail=button.children[0];assert.equal(thumbnail.tag,'img');assert.equal(thumbnail.src,image);assert.equal(thumbnail.loading,'lazy');assert.equal(thumbnail.decoding,'async');assert.equal(thumbnail.alt,'');assert.equal(thumbnail.width,64);assert.equal(thumbnail.height,48);
+assert.match(button['aria-label'],/Species A.*comb_DJI_a.JPG.*0.912/);
+thumbnail.onerror();assert.equal(thumbnail.hidden,true);button.onclick();assert.equal(chosen,true);
+const unknown=similarPhotoButton({key:'b',image:'javascript:alert(1)'},.2,()=>{});
+assert.equal(unknown.children.length,1);assert.equal(unknown.children[0].children[0].textContent,'Unlabelled canopy photo');
+"""
+    subprocess.run(["node", "-e", helpers + checks], check=True)
