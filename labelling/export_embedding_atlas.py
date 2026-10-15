@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 import argparse
+import csv
 import hashlib
 import json
 from pathlib import Path
@@ -10,6 +11,31 @@ import numpy as np
 
 def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def load_labels(path):
+    """Read recorded botanist frame labels with exact, unique source keys."""
+    if not path.exists():
+        return {}, None
+    labels = {}
+    seen = set()
+    with path.open(newline="", encoding="utf-8") as stream:
+        reader = csv.DictReader(stream)
+        if not {"global_key", "wcvp_canonical_name"} <= set(reader.fieldnames or []):
+            raise ValueError(
+                "Labels require global_key and wcvp_canonical_name columns"
+            )
+        for row in reader:
+            key = row["global_key"]
+            if not key:
+                raise ValueError("Botanist label has an empty frame key")
+            if key in seen:
+                raise ValueError("Duplicate or conflicting botanist labels for: " + key)
+            seen.add(key)
+            label = (row["wcvp_canonical_name"] or "").strip()
+            if label:
+                labels[key] = label
+    return labels, {"file": path.name, "sha256": sha(path)}
 
 
 def export(
@@ -23,6 +49,9 @@ def export(
         for r in map(json.loads, inventory_path.read_text().splitlines())
     }
     records, vectors, sources, excluded, seen, versions = [], [], [], {}, set(), set()
+    labels, label_source = load_labels(data_root / "gt_dominant_taxon.csv")
+    if label_source:
+        sources.append(label_source)
     pools = []
     if crownfirst_embeddings:
         if not encoder_label:
@@ -107,6 +136,7 @@ def export(
                     "lat": lat,
                     "lon": lon,
                     "group": group,
+                    "label": labels.get(key),
                     "image": row.get("row_data", ""),
                     "mission": row.get("metadata", {}).get("mission", ""),
                     "crop": meta.get("crop_size"),
@@ -156,6 +186,12 @@ def export(
             "position": "Aircraft camera positions, not crown centroids",
             "excluded": excluded,
             "input_count": len(seen),
+            "labels": {
+                "available": label_source is not None,
+                "matched_count": sum(p["label"] is not None for p in records),
+                "source_count": len(labels),
+                "meaning": "Recorded botanist frame labels, not independently verified ground truth; no neighbor label transfer",
+            },
             "sources": sources
             + [{"file": inventory_path.name, "sha256": sha(inventory_path)}],
         },

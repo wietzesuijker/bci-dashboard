@@ -120,20 +120,24 @@ def test_external_vector_shape_and_neighbor_count(tmp_path):
 
 def test_atlas_has_styles_for_its_own_classes():
     import re
-    html = module(ROOT / 'dashboard/embedding_atlas_assets.py').HTML
-    css = html.split('<style>')[1].split('</style>')[0]
-    classes = {c for match in re.findall(r'class="([\w -]+)"', html) for c in match.split()}
-    assert classes <= set(re.findall(r'\.([a-zA-Z][\w-]*)', css))
+
+    html = module(ROOT / "dashboard/embedding_atlas_assets.py").HTML
+    css = html.split("<style>")[1].split("</style>")[0]
+    classes = {
+        c for match in re.findall(r'class="([\w -]+)"', html) for c in match.split()
+    }
+    assert classes <= set(re.findall(r"\.([a-zA-Z][\w-]*)", css))
 
 
 def test_stable_frame_url_encoding_and_unknown_key_fallback():
     import shutil
     import subprocess
-    if not shutil.which('node'):
-        pytest.skip('Node is needed to execute browser URL helpers')
-    html = module(ROOT / 'dashboard/embedding_atlas_assets.py').HTML
-    helpers = html.split('// URL_HELPERS_START')[1].split('// URL_HELPERS_END')[0]
-    checks = r'''
+
+    if not shutil.which("node"):
+        pytest.skip("Node is needed to execute browser URL helpers")
+    html = module(ROOT / "dashboard/embedding_atlas_assets.py").HTML
+    helpers = html.split("// URL_HELPERS_START")[1].split("// URL_HELPERS_END")[0]
+    checks = r"""
 const assert = require('node:assert/strict');
 const key = 'comb_frame + #&/é.JPG';
 const points = [{key:'first'}, {key}];
@@ -141,5 +145,36 @@ assert.deepEqual(frameFromHash(frameHash(key), points), {index:1,missing:false})
 assert.deepEqual(frameFromHash('#frame=unknown', points), {index:0,missing:true});
 assert.deepEqual(frameFromHash('', points), {index:0,missing:false});
 assert.deepEqual(frameFromHash('#frame=%E0%A4%A', points), {index:0,missing:true});
-'''
-    subprocess.run(['node', '-e', helpers + checks], check=True)
+"""
+    subprocess.run(["node", "-e", helpers + checks], check=True)
+
+
+def test_botanist_labels_exact_join_missing_and_provenance(tmp_path):
+    export = module(ROOT / "labelling/export_embedding_atlas.py").export
+    fixture_pool(tmp_path)
+    (tmp_path / "gt_dominant_taxon.csv").write_text(
+        "global_key,wcvp_canonical_name\na,Apeiba membranacea\ncomb_b.JPG,Not an exact key\nc,\n"
+    )
+    result = export(tmp_path)
+    assert [p["label"] for p in result["points"]] == ["Apeiba membranacea", None, None]
+    assert result["provenance"]["labels"]["matched_count"] == 1
+    assert result["provenance"]["labels"]["source_count"] == 2
+    assert result["provenance"]["labels"]["available"] is True
+    assert any(
+        s["file"] == "gt_dominant_taxon.csv" and len(s["sha256"]) == 64
+        for s in result["provenance"]["sources"]
+    )
+    (tmp_path / "gt_dominant_taxon.csv").unlink()
+    result = export(tmp_path)
+    assert result["provenance"]["labels"]["available"] is False
+    assert all(p["label"] is None for p in result["points"])
+
+
+@pytest.mark.parametrize("second", ["Same label", "Conflicting label"])
+def test_duplicate_botanist_label_keys_fail(tmp_path, second):
+    fixture_pool(tmp_path)
+    (tmp_path / "gt_dominant_taxon.csv").write_text(
+        "global_key,wcvp_canonical_name\na,Same label\na," + second + "\n"
+    )
+    with pytest.raises(ValueError, match="Duplicate or conflicting"):
+        module(ROOT / "labelling/export_embedding_atlas.py").export(tmp_path)
