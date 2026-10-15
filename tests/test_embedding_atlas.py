@@ -242,6 +242,23 @@ assert.equal(element('key').textContent,'a');
 element('photo').onerror();
 assert.equal(element('photo').hidden,true);
 assert.match(element('photoStatus').textContent,/Photo unavailable/);
+const initialRequests=imageRequests;
+$('basemap').value='satellite';$('basemap').onchange();
+assert.ok(imageRequests>initialRequests);
+assert.ok([...tiles.keys()].some(key=>key.startsWith('satellite/')));
+assert.ok([...tiles.keys()].some(key=>key.startsWith('map/')));
+assert.match($('attributionSource').textContent,/Esri, Vantor/);
+assert.equal($('basemapNote').hidden,false);
+const satelliteRequests=imageRequests;
+for(let i=0;i<40&&pending.length;i++)pending.shift()();
+assert.equal(imageRequests,satelliteRequests);
+assert.equal(pending.length,0);
+assert.match($('basemapStatus').textContent,/Basemap unavailable/);
+$('basemap').value='map';$('basemap').onchange();
+assert.equal(imageRequests,satelliteRequests);
+assert.match($('attributionSource').textContent,/OpenStreetMap/);
+assert.equal($('basemapNote').hidden,true);
+assert.equal(element('key').textContent,'a');
 """
     subprocess.run(["node", "-e", setup + script + checks], check=True)
 
@@ -352,3 +369,25 @@ $('search').value='';$('group').value='With recorded label';filter();assert.deep
 $('group').value='Without recorded label';filter();assert.deepEqual(visible,[1]);
 """
     subprocess.run(["node", "-e", setup + script + checks], check=True)
+
+
+def test_basemap_url_order_and_cache_identity():
+    import shutil
+    import subprocess
+
+    if not shutil.which("node"):
+        pytest.skip("Node is needed to execute basemap URL logic")
+    html = module(ROOT / "dashboard/embedding_atlas_assets.py").HTML
+    helpers = html.split("// BASEMAP_HELPERS_START")[1].split("// BASEMAP_HELPERS_END")[
+        0
+    ]
+    checks = r"""
+const assert=require('node:assert/strict');
+const map=tileRequest(basemapSpec('map'),17,36465,62204),satellite=tileRequest(basemapSpec('satellite'),17,36465,62204);
+assert.equal(map.url,'https://tile.openstreetmap.org/17/36465/62204.png');
+assert.equal(satellite.url,'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/17/62204/36465');
+assert.notEqual(map.key,satellite.key);
+assert.equal(basemapSpec('unknown').id,'map');
+assert.match(basemapSpec('satellite').attribution,/Esri, Vantor, Earthstar Geographics/);
+"""
+    subprocess.run(["node", "-e", helpers + checks], check=True)
