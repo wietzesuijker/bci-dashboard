@@ -224,7 +224,7 @@ const assert=require('node:assert/strict');
 let imageRequests=0,pending=[];
 const elements=new Map();
 const context=new Proxy({}, {get:()=>()=>{}});
-function element(id){if(!elements.has(id))elements.set(id,{clientWidth:640,clientHeight:520,value:'',style:{},getContext:()=>context,replaceChildren(){},append(){},removeAttribute(){},setAttribute(){},addEventListener(){}});return elements.get(id)}
+function element(id){if(!elements.has(id))elements.set(id,{clientWidth:640,clientHeight:520,value:'',style:{},getContext:()=>context,replaceChildren(){},append(){},removeAttribute(){},setAttribute(name,value){this[name]=value},addEventListener(){}});return elements.get(id)}
 const payload={points:[{key:'a',lat:9.1,lon:-79.8,xy:[0,0],rgb:[1,2,3],neighbours:[],image:'https://example.org/photo.jpg',group:'Labelled'}],provenance:{encoder:'test',versions:[],dimensions:3,projection:'PCA',input_count:1,excluded:{},sources:[]}};
 element('atlas-data').textContent=JSON.stringify(payload);
 global.document={getElementById:element,querySelectorAll:()=>[],createElement:()=>element('button')};
@@ -243,22 +243,27 @@ element('photo').onerror();
 assert.equal(element('photo').hidden,true);
 assert.match(element('photoStatus').textContent,/Photo unavailable/);
 const initialRequests=imageRequests;
-$('basemap').value='satellite';$('basemap').onchange();
+$('basemap').value='map';$('basemap').onchange();
 assert.ok(imageRequests>initialRequests);
 assert.ok([...tiles.keys()].some(key=>key.startsWith('satellite/')));
 assert.ok([...tiles.keys()].some(key=>key.startsWith('map/')));
-assert.match($('attributionSource').textContent,/Esri, Vantor/);
-assert.equal($('basemapNote').hidden,false);
+assert.match($('attributionSource').textContent,/OpenStreetMap/);
+assert.equal($('basemapNote').hidden,true);
 const satelliteRequests=imageRequests;
 for(let i=0;i<40&&pending.length;i++)pending.shift()();
 assert.equal(imageRequests,satelliteRequests);
 assert.equal(pending.length,0);
 assert.match($('basemapStatus').textContent,/Basemap unavailable/);
-$('basemap').value='map';$('basemap').onchange();
+$('basemap').value='satellite';$('basemap').onchange();
 assert.equal(imageRequests,satelliteRequests);
-assert.match($('attributionSource').textContent,/OpenStreetMap/);
-assert.equal($('basemapNote').hidden,true);
+assert.match($('attributionSource').textContent,/Esri, Vantor/);
+assert.equal($('basemapNote').hidden,false);
 assert.equal(element('key').textContent,'a');
+$('plotView').hidden=true;mapHits=[];
+$('togglePlot').onclick();assert.equal($('plotView').hidden,false);
+assert.equal($('togglePlot')['aria-expanded'],'true');assert.ok(mapHits.length>0);
+$('togglePlot').onclick();assert.equal($('plotView').hidden,true);
+assert.equal($('togglePlot')['aria-expanded'],'false');
 """
     subprocess.run(["node", "-e", setup + script + checks], check=True)
 
@@ -350,13 +355,14 @@ def test_selected_neighbor_outside_filter_stays_plotted_listed_and_locatable():
     setup = r"""
 const assert=require('node:assert/strict'),elements=new Map();
 const context=new Proxy({}, {get:()=>()=>{}});
-function make(){return {children:[],clientWidth:640,clientHeight:520,value:'',style:{},getContext:()=>context,replaceChildren(...v){this.children=v},append(...v){this.children.push(...v)},removeAttribute(){},setAttribute(){},addEventListener(){}}}
+function make(){return {children:[],clientWidth:640,clientHeight:520,value:'',style:{},getContext:()=>context,replaceChildren(...v){this.children=v},append(...v){this.children.push(...v)},removeAttribute(){},setAttribute(name,value){this[name]=value},addEventListener(){}}}
 function element(id){if(!elements.has(id))elements.set(id,make());return elements.get(id)}
 const payload={points:[{key:'a',label:'Species A',lat:9.1,lon:-79.8,xy:[0,0],rgb:[1,2,3],neighbours:[[1,.9]],image:'https://example.org/a.jpg',group:'Crownfirst pool'},{key:'b',label:null,lat:9.2,lon:-79.9,xy:[1,1],rgb:[3,2,1],neighbours:[[0,.9]],image:'https://example.org/b.jpg',group:'Crownfirst pool'}],provenance:{encoder:'test',versions:[],dimensions:3,projection:'PCA',input_count:2,excluded:{},sources:[]}};
 element('atlas-data').textContent=JSON.stringify(payload);
 global.document={getElementById:element,querySelectorAll:()=>[],createElement:make};global.devicePixelRatio=1;global.location={hash:''};global.history={replaceState(){}};global.window={addEventListener(){}};global.requestAnimationFrame=()=>{};global.Image=class{};
 """
     checks = r"""
+assert.equal($('basemap').value,'satellite');assert.deepEqual([view.x,view.y],geo[0]);assert.ok(view.scale>=256*2**17);assert.equal(visible.length,2);
 $('search').value='Species A';filter();assert.deepEqual(visible,[0]);
 $('neighbors').children[0].children[0].onclick();assert.equal(selected,1);
 assert.deepEqual(visible,[0]);assert.ok(mapHits.some(p=>p[2]===1));assert.ok(plotHits.some(p=>p[2]===1));
@@ -367,6 +373,7 @@ assert.ok(mapHits.some(p=>p[2]===1&&p[0]===320&&p[1]===260));
 $('search').value='no matches';filter();assert.equal(visible.length,0);assert.equal(mapHits.length,1);assert.equal(plotHits.length,1);assert.equal($('results').children.length,1);
 $('search').value='';$('group').value='With recorded label';filter();assert.deepEqual(visible,[0]);
 $('group').value='Without recorded label';filter();assert.deepEqual(visible,[1]);
+$('reset').onclick();assert.equal(visible.length,2);assert.equal($('search').value,'');assert.ok(view.scale<256*2**17);
 """
     subprocess.run(["node", "-e", setup + script + checks], check=True)
 
@@ -391,3 +398,37 @@ assert.equal(basemapSpec('unknown').id,'map');
 assert.match(basemapSpec('satellite').attribution,/Esri, Vantor, Earthstar Geographics/);
 """
     subprocess.run(["node", "-e", helpers + checks], check=True)
+
+
+def test_map_first_country_navigation_and_secondary_exploration():
+    from html.parser import HTMLParser
+
+    html = module(ROOT / "dashboard/embedding_atlas_assets.py").HTML
+
+    class Elements(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.tags = []
+
+        def handle_starttag(self, tag, attrs):
+            self.tags.append((tag, dict(attrs)))
+
+    elements = Elements()
+    elements.feed(html)
+    by_id = {attrs["id"]: (tag, attrs) for tag, attrs in elements.tags if "id" in attrs}
+    assert "hidden" in by_id["plotView"][1]
+    assert by_id["togglePlot"][1]["aria-expanded"] == "false"
+    assert by_id["togglePlot"][1]["aria-controls"] == "plotView"
+    assert "open" not in by_id["advanced"][1]
+    assert "Panama · Forest canopy explorer" in html
+    assert "Barro Colorado Island" in html
+    assert any(
+        attrs.get("href")
+        == "https://wietzesuijker.github.io/what-to-id/embeddings.html"
+        for _, attrs in elements.tags
+    )
+    assert (
+        html.index('id="mapView"') < html.index("<aside>") < html.index('id="plotView"')
+    )
+    advanced = html.split('<details id="advanced">')[1].split("</details>")[0]
+    assert 'id="group"' in advanced and "model_health_dashboard.html" in advanced
