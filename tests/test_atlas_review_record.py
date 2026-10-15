@@ -1,6 +1,7 @@
 """Local review handoffs preserve modal identity and recorded evidence boundaries."""
 
 from pathlib import Path
+import json
 import runpy
 import shutil
 import subprocess
@@ -33,7 +34,7 @@ Object.defineProperty(atlas,'comparison',{get(){throw new Error('Shared-cohort c
 const state={query:1,candidates:[[2,.81234],[3,.76543]],rank:0,mode:'other'},note='观察 <img src=x onerror=alert(1)>\nSecond line 🌳',clock='2026-10-16T04:01:02.003Z';
 const record=reviewRecord(atlas,state,'https://example.org/crownfirst-atlas.html?cached=1#frame=wrong',clock,note);
 assert.equal(record.schema_version,1);assert.equal(record.purpose,'visual_review_handoff');assert.equal(record.exported_at_utc,clock);assert.match(record.scope,/Single-model.*not the shared-cohort/);
-assert.deepEqual(record.atlas,{page_url:'https://example.org/crownfirst-atlas.html?cached=1',encoder:'actual-page-encoder',versions:['recorded-v1','recorded-v2'],dimensions:1024,pool_size:4,sources:atlas.provenance.sources});
+assert.deepEqual(record.atlas,{page_url:'https://example.org/crownfirst-atlas.html?cached=1',encoder:'actual-page-encoder',encoder_identity:null,versions:['recorded-v1','recorded-v2'],dimensions:1024,pool_size:4,sources:atlas.provenance.sources});
 assert.deepEqual(record.relationship,{method:'cosine_on_l2_normalized_full_vectors',mode:'other',eligible_pool_support:2,score:.81234,rank_1_based:1,stored_candidate_count:2});
 assert.equal(record.query.key,'query ä & /?.JPG');assert.equal(record.candidate.key,'candidate');assert.equal(record.query.recorded_taxon,'Fabaceae');assert.equal(record.candidate.recorded_taxon,'Luehea');assert.equal(record.query.mission,' flight-b ');assert.equal(record.query.version,'recorded-v1');assert.equal(record.candidate.version,'recorded-v2');assert.equal(record.query.image_url,'https://example.org/query.jpg');
 assert.deepEqual(record.query.crop_geometry,{width:4000,height:3000,x:1360,y:860,side:1280,source_encoder:'actual-page-encoder'});assert.equal(record.candidate.crop_geometry,null);assert.deepEqual(record.candidate.crop_record,{size_px:1280,source_width_px:null,source_height_px:null,source_encoder:'actual-page-encoder'});
@@ -47,7 +48,61 @@ assert.throws(()=>reviewRecord(atlas,null,'https://example.org/',clock),/No phot
 """)
 
 
-def test_dialog_notes_follow_the_pair_and_download_releases_blob_url():
+def test_review_record_copies_identity_and_preserves_unknown_external_versions():
+    html = atlas_html()
+    helpers = "\n".join(
+        html.split("// " + marker + "_START")[1].split("// " + marker + "_END")[0]
+        for marker in ["CROP_HELPERS", "SIMILAR_PHOTO_HELPERS", "MISSION_VIEW_HELPERS", "REVIEW_RECORD_HELPERS"]
+    )
+    run_node(helpers + r"""
+const assert=require('node:assert/strict');
+const external={points:[{key:'query',version:null}],provenance:{encoder:'Supplied display name',versions:[],encoder_identity:{name_basis:'supplied_at_import',version_source:'not_recorded'}}};
+const state={query:0,rank:null,mode:'all'},clock='2026-10-16T04:01:02.003Z';
+const record=reviewRecord(external,state,'https://example.org/atlas.html',clock);
+assert.deepEqual(record.atlas.encoder_identity,{name_basis:'supplied_at_import',version_source:'not_recorded'});assert.notEqual(record.atlas.encoder_identity,external.provenance.encoder_identity);assert.deepEqual(record.atlas.versions,[]);assert.equal(record.query.version,null);
+external.provenance.encoder_identity.name_basis='mutated';assert.equal(record.atlas.encoder_identity.name_basis,'supplied_at_import');
+external.provenance.encoder_identity={name_basis:'endpoint_label',version_source:'cached_response',details:{source:'response'}};external.provenance.versions=['actual-api-version'];external.points[0].version='actual-api-version';
+const api=reviewRecord(external,state,'https://example.org/atlas.html',clock);external.provenance.encoder_identity.details.source='mutated';assert.equal(api.atlas.encoder_identity.details.source,'response');assert.equal(api.atlas.encoder_identity.version_source,'cached_response');assert.deepEqual(api.atlas.versions,['actual-api-version']);assert.equal(api.query.version,'actual-api-version');
+delete external.provenance.encoder_identity;const legacy=reviewRecord(external,state,'https://example.org/crownfirst-atlas.html',clock);assert.equal(legacy.atlas.encoder_identity,null);assert.deepEqual(legacy.atlas.versions,['actual-api-version']);assert.equal(legacy.query.version,'actual-api-version');
+""")
+
+
+def test_model_version_context_reports_basis_without_name_inference():
+    from test_atlas_mission_view import photo, run_atlas
+
+    helpers = atlas_html().split("// ENCODER_IDENTITY_HELPERS_START")[1].split("// ENCODER_IDENTITY_HELPERS_END")[0]
+    run_node(helpers + r"""
+const assert=require('node:assert/strict');
+const external={encoder:'Supplied display name',versions:[],encoder_identity:{name_basis:'supplied_at_import',version_source:'not_recorded'}};
+assert.equal(encoderVersionStatus(external),'Model version not recorded');assert.match(encoderIdentityNote(external),/Display name provided at import.*SHA-256 identifies the vector file.*does not record a checkpoint or preprocessing run/);
+const api={encoder:'Endpoint label',versions:['recorded-v7'],encoder_identity:{name_basis:'endpoint_label',version_source:'cached_response'}};
+assert.equal(encoderVersionStatus(api),'Cached API version: recorded-v7');assert.match(encoderIdentityNote(api),/endpoint label.*cached responses.*do not establish checkpoint weights or a complete preprocessing run/);
+for(const encoder of ['Crownfirst','Pl@ntNet /v2/embeddings','arbitrary display name']){const legacy={encoder,versions:['legacy-v1']};assert.equal(encoderVersionStatus(legacy),'Version metadata: legacy-v1');assert.match(encoderIdentityNote(legacy),/basis are not recorded/);assert.equal(encoderVersionStatus({...legacy,versions:[]}),'Model version not recorded in this atlas');}
+""")
+    run_atlas([photo("query", "flight-a")], r"""
+assert.match($('similarModel').textContent,/Model version not recorded in this atlas/);assert.match($('provenance').textContent,/Model name and version basis are not recorded/);assert.ok(!$('provenance').textContent.includes(', ,'));
+data.provenance.encoder='Supplied display name';data.provenance.versions=[];data.provenance.encoder_identity={name_basis:'supplied_at_import',version_source:'not_recorded'};renderSimilarPhotos();assert.equal($('similarModel').textContent,'Model: Supplied display name · Model version not recorded');$('inspectPhoto').onclick();assert.match($('photoComparisonContext').textContent,/Supplied display name · Model version not recorded/);$('closePhotoComparison').onclick();
+data.provenance.encoder='Endpoint label';data.provenance.versions=['recorded-v7'];data.provenance.encoder_identity={name_basis:'endpoint_label',version_source:'cached_response'};renderSimilarPhotos();assert.equal($('similarModel').textContent,'Model: Endpoint label · Cached API version: recorded-v7');$('inspectPhoto').onclick();assert.match($('photoComparisonContext').textContent,/Cached API version: recorded-v7/);$('closePhotoComparison').onclick();
+""")
+
+
+@pytest.mark.parametrize(
+    "identity,version_status,basis_note",
+    [
+        (None, "Version metadata: actual-v1", "Model name and version basis are not recorded"),
+        (
+            {"name_basis": "supplied_at_import", "version_source": "not_recorded"},
+            "Model version not recorded",
+            "Display name provided at import",
+        ),
+        (
+            {"name_basis": "endpoint_label", "version_source": "cached_response"},
+            "Cached API version: actual-v1",
+            "Model name is the endpoint label; versions come from cached responses",
+        ),
+    ],
+)
+def test_dialog_notes_follow_the_pair_and_download_releases_blob_url(identity, version_status, basis_note):
     script = atlas_html().split("<script>")[1].split("</script>")[0]
     setup = r"""
 const assert=require('node:assert/strict'),elements=new Map(),timers=[],revoked=[],downloads=[];let latestBlob;
@@ -56,10 +111,17 @@ function make(){return {children:[],attributes:{},isConnected:true,clientWidth:6
 function element(id){if(!elements.has(id))elements.set(id,make());return elements.get(id)}
 const shared={lat:9.1,lon:-79.8,xy:[0,0],rgb:[1,2,3],group:'pool',mission:'flight-a',version:'actual-v1'};
 const payload={points:[{...shared,key:'query',image:'https://example.org/a.jpg',neighbours:[[1,.91234],[2,.82345]],other_mission_neighbours:[[2,.82345]]},{...shared,key:'same',neighbours:[[0,.91234]],image:'https://example.org/b.jpg'},{...shared,key:'other',mission:'flight-b',neighbours:[[0,.82345]],image:'https://example.org/c.jpg'}],provenance:{encoder:'actual-encoder',versions:['actual-v1'],dimensions:3,projection:'PCA',input_count:3,excluded:{},sources:[{file:'actual.npz',sha256:'abc'}]}};
+const identity=__IDENTITY__;if(identity)payload.provenance.encoder_identity=identity;if(identity?.version_source==='not_recorded'){payload.provenance.versions=[];for(const point of payload.points)point.version=null}
 element('atlas-data').textContent=JSON.stringify(payload);
 global.document={body:make(),getElementById:element,querySelector:()=>element('inspector'),querySelectorAll:()=>[],createElement:make};global.devicePixelRatio=1;global.location={hash:'#frame=query',href:'https://example.org/crownfirst-atlas.html#frame=query'};global.history={replaceState(_,__,hash){location.hash=hash}};global.window={addEventListener(){},matchMedia:()=>({matches:false})};global.requestAnimationFrame=()=>{};global.Image=class{};
 URL.createObjectURL=blob=>{latestBlob=blob;return 'blob:local-review'};URL.revokeObjectURL=url=>revoked.push(url);global.setTimeout=(fn,delay)=>timers.push({fn,delay});global.fetch=()=>{throw new Error('No network during review export')};Object.defineProperty(global,'localStorage',{get(){throw new Error('Notes must not persist to local storage')}});
-"""
+""".replace("__IDENTITY__", json.dumps(identity))
+    rendered_checks = (
+        "assert.ok($('similarModel').textContent.includes(" + json.dumps(version_status) + "));"
+        "assert.ok($('provenance').textContent.includes(" + json.dumps(version_status) + "));"
+        "assert.ok($('provenance').textContent.includes(" + json.dumps(basis_note) + "));"
+        "assert.ok(!$('provenance').textContent.includes(', ,'));"
+    )
     checks = r"""
 (async()=>{
 const opener=$('workspaceEnlarge');opener.focus();opener.onclick();assert.equal($('reviewNote').value,'');assert.match($('photoComparisonScore').textContent,/0.912/);assert.doesNotMatch($('photoComparisonScore').textContent,/0.91234/);
@@ -77,4 +139,4 @@ delete data.comparison;openPhotoComparison(0);assert.equal($('reviewNote').value
 $('inspectPhoto').onclick();assert.equal($('reviewNote').value,'Query only');$('closePhotoComparison').onclick();neighborMode='other';openPhotoComparison(0);assert.equal($('reviewNote').value,'Other-mode note');$('closePhotoComparison').onclick();
 })().catch(error=>{console.error(error);process.exitCode=1});
 """
-    run_node(setup + script + checks)
+    run_node(setup + script + rendered_checks + checks)

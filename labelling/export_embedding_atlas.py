@@ -118,7 +118,7 @@ def export(
                 continue
             if crownfirst_embeddings:
                 meta = {}
-                version = encoder_label
+                version = None
             else:
                 cache = data_root / directory / "cache" / (key + ".json")
                 if not cache.exists():
@@ -127,7 +127,7 @@ def export(
                 version = meta.get("version")
                 if not version:
                     raise ValueError("Missing encoder version: " + key)
-            versions.add(version)
+                versions.add(version)
             vectors.append(vector)
             records.append(
                 {
@@ -193,6 +193,15 @@ def export(
             "encoder": encoder_label
             if crownfirst_embeddings
             else "Pl@ntNet /v2/embeddings",
+            "encoder_identity": {
+                "name_basis": "supplied_at_import",
+                "version_source": "not_recorded",
+            }
+            if crownfirst_embeddings
+            else {
+                "name_basis": "endpoint_label",
+                "version_source": "cached_response",
+            },
             "versions": sorted(versions),
             "dimensions": x.shape[1],
             "pca_explained_variance": explained[:3].round(8).tolist(),
