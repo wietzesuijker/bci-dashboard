@@ -94,7 +94,7 @@ def test_alias_collisions_invalid_vectors_and_shape_boundaries():
     assert result["cohort_size"] == 2
 
 
-def test_compact_comparison_renders_neighbor_label_and_selection():
+def test_comparison_sheet_inspects_neighbor_before_explicit_selection():
     from test_atlas_mission_view import photo, run_atlas
 
     checks = r"""
@@ -103,10 +103,10 @@ compareSelection('a');
 assert.match($('modelComparisonQueryLabel').textContent,/Species A/);
 assert.match($('comparisonSummary').textContent,/1 of 1 nearest frames shared/);
 const model=$('comparisonModels').children[0];
-assert.match(model.children[1].textContent,/0 of 1 labelled neighbors/);
+assert.match(model.children[1].textContent,/0 of 1 labelled retrieved photos/);
 const button=model.children[2].children[0].children[0];
-assert.match(button.textContent,/Select this photo: Species B.*b.*Shared-cohort cosine 0.300/);
-button.onclick();assert.equal(selected,1);
+assert.match(button['aria-label'],/Inspect rank 1.*first.*Species B.*Frame b.*Cosine within this model 0.300/);
+button.onclick();assert.equal(selected,0);assert.equal(sharedInspection.queryKey,'a');assert.equal(sharedInspection.candidates[0].key,'b');$('sharedInspectionChoose').onclick();assert.equal(selected,1);
 assert.equal(document.activeElement,$('modelComparisonQueryKey'));
 compareSelection('outside');assert.match($('comparisonSummary').textContent,/outside the shared/);
 """
