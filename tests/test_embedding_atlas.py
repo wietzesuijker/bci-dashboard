@@ -224,11 +224,11 @@ const assert=require('node:assert/strict');
 let imageRequests=0,pending=[];
 const elements=new Map();
 const context=new Proxy({}, {get:()=>()=>{}});
-function element(id){if(!elements.has(id))elements.set(id,{clientWidth:640,clientHeight:520,value:'',style:{},getContext:()=>context,replaceChildren(){},append(){},removeAttribute(){},setAttribute(name,value){this[name]=value},addEventListener(){}});return elements.get(id)}
+function element(id){if(!elements.has(id))elements.set(id,{clientWidth:640,clientHeight:520,value:'',style:{},focus(options){this.focused=true;this.focusOptions=options},scrollIntoView(options){this.scroll=options},getContext:()=>context,replaceChildren(){},append(){},removeAttribute(){},setAttribute(name,value){this[name]=value},addEventListener(){}});return elements.get(id)}
 const payload={points:[{key:'a',lat:9.1,lon:-79.8,xy:[0,0],rgb:[1,2,3],neighbours:[],image:'https://example.org/photo.jpg',group:'Labelled'}],provenance:{encoder:'test',versions:[],dimensions:3,projection:'PCA',input_count:1,excluded:{},sources:[]}};
 element('atlas-data').textContent=JSON.stringify(payload);
 global.document={getElementById:element,querySelectorAll:()=>[],createElement:()=>element('button')};
-global.devicePixelRatio=1;global.location={hash:''};global.history={replaceState(){}};global.window={addEventListener(){}};
+global.devicePixelRatio=1;global.location={hash:''};global.history={replaceState(){}};global.window={addEventListener(){},matchMedia:q=>({matches:q==='(prefers-reduced-motion: reduce)'})};
 global.requestAnimationFrame=f=>{pending.push(f)};
 global.Image=class{set src(v){imageRequests++;this.complete=true;this.naturalWidth=0;if(this.onerror)this.onerror()}};
 """
@@ -261,9 +261,9 @@ assert.equal($('basemapNote').hidden,false);
 assert.equal(element('key').textContent,'a');
 $('plotView').hidden=true;mapHits=[];
 $('togglePlot').onclick();assert.equal($('plotView').hidden,false);
-assert.equal($('togglePlot')['aria-expanded'],'true');assert.ok(mapHits.length>0);
+assert.equal($('togglePlot')['aria-expanded'],'true');assert.ok(mapHits.length>0);assert.equal($('plotView').focused,true);assert.equal($('plotView').scroll.behavior,'auto');
 $('togglePlot').onclick();assert.equal($('plotView').hidden,true);
-assert.equal($('togglePlot')['aria-expanded'],'false');
+assert.equal($('togglePlot')['aria-expanded'],'false');assert.equal($('mapView').focused,true);
 """
     subprocess.run(["node", "-e", setup + script + checks], check=True)
 
@@ -355,16 +355,20 @@ def test_selected_neighbor_outside_filter_stays_plotted_listed_and_locatable():
     setup = r"""
 const assert=require('node:assert/strict'),elements=new Map();
 const context=new Proxy({}, {get:()=>()=>{}});
-function make(){return {children:[],clientWidth:640,clientHeight:520,value:'',style:{},getContext:()=>context,replaceChildren(...v){this.children=v},append(...v){this.children.push(...v)},removeAttribute(){},setAttribute(name,value){this[name]=value},addEventListener(){}}}
+function make(){return {children:[],contains(target){return target===this||this.children.some(child=>child.contains?.(target))},clientWidth:640,clientHeight:520,value:'',style:{},focus(options){this.focused=true;this.focusOptions=options},scrollIntoView(options){this.scroll=options},getContext:()=>context,replaceChildren(...v){this.children=v},append(...v){this.children.push(...v)},removeAttribute(){},setAttribute(name,value){this[name]=value},addEventListener(){}}}
 function element(id){if(!elements.has(id))elements.set(id,make());return elements.get(id)}
 const payload={points:[{key:'a',label:'Species A',lat:9.1,lon:-79.8,xy:[0,0],rgb:[1,2,3],neighbours:[[1,.9]],image:'https://example.org/a.jpg',group:'Crownfirst pool'},{key:'b',label:null,lat:9.2,lon:-79.9,xy:[1,1],rgb:[3,2,1],neighbours:[[0,.9]],image:'https://example.org/b.jpg',group:'Crownfirst pool'}],provenance:{encoder:'test',versions:[],dimensions:3,projection:'PCA',input_count:2,excluded:{},sources:[]}};
 element('atlas-data').textContent=JSON.stringify(payload);
-global.document={getElementById:element,querySelectorAll:()=>[],createElement:make};global.devicePixelRatio=1;global.location={hash:''};global.history={replaceState(){}};global.window={addEventListener(){}};global.requestAnimationFrame=()=>{};global.Image=class{};
+global.document={getElementById:element,querySelector:()=>element('inspector'),querySelectorAll:()=>[],createElement:make};global.devicePixelRatio=1;global.location={hash:''};global.history={replaceState(){}};global.window={addEventListener(){},matchMedia:q=>({matches:q==='(prefers-reduced-motion: reduce)'})};global.requestAnimationFrame=()=>{};global.Image=class{};
 """
     checks = r"""
 assert.equal($('basemap').value,'satellite');assert.deepEqual([view.x,view.y],geo[0]);assert.ok(view.scale>=256*2**17);assert.equal(visible.length,2);
 $('search').value='Species A';filter();assert.deepEqual(visible,[0]);
-$('neighbors').children[0].children[0].onclick();assert.equal(selected,1);
+$('inspector').append($('neighbors'),$('results'));const oldButton=$('neighbors').children[0].children[0];document.activeElement=oldButton;$('inspector').scrollTop=215;oldButton.onclick();assert.equal(selected,1);assert.equal($('inspector').scrollTop,0);assert.equal($('inspector').focused,true);assert.deepEqual($('inspector').focusOptions,{preventScroll:true});$('inspector').scrollTop=71;select(1);assert.equal($('inspector').scrollTop,71);assert.equal($('inspector').scroll,undefined);
+window.matchMedia=q=>({matches:q==='(max-width: 900px)'||q==='(prefers-reduced-motion: reduce)'});
+select(0);assert.deepEqual($('inspector').scroll,{behavior:'auto',block:'start'});assert.equal($('inspector').focused,true);
+const selectionBeforeReturn=selected;$('returnToMap').onclick();assert.equal(selected,selectionBeforeReturn);assert.deepEqual($('mapView').scroll,{behavior:'auto',block:'start'});
+window.matchMedia=q=>({matches:q==='(prefers-reduced-motion: reduce)'});select(1);
 assert.deepEqual(visible,[0]);assert.ok(mapHits.some(p=>p[2]===1));assert.ok(plotHits.some(p=>p[2]===1));
 assert.match($('results').children[0].textContent,/b.*outside current filter/);
 assert.match($('status').textContent,/1 of 2 frames match/);
@@ -428,7 +432,7 @@ def test_map_first_local_navigation_and_secondary_exploration():
     )
     assert "country-nav" not in html
     assert (
-        html.index('id="mapView"') < html.index("<aside>") < html.index('id="plotView"')
+        html.index('id="mapView"') < html.index("<aside ") < html.index('id="plotView"')
     )
     advanced = html.split('<details id="advanced">')[1].split("</details>")[0]
     assert 'id="group"' in advanced and "model_health_dashboard.html" in advanced
@@ -456,3 +460,55 @@ const unknown=similarPhotoButton({key:'b',image:'javascript:alert(1)'},.2,()=>{}
 assert.equal(unknown.children.length,1);assert.equal(unknown.children[0].children[0].textContent,'Unlabelled canopy photo');
 """
     subprocess.run(["node", "-e", helpers + checks], check=True)
+
+
+def test_selecting_offscreen_photo_recenters_without_changing_zoom():
+    import shutil
+    import subprocess
+
+    if not shutil.which("node"):
+        pytest.skip("Node is needed to execute conditional selection centering")
+    html = module(ROOT / "dashboard/embedding_atlas_assets.py").HTML
+    helpers = html.split("// MAP_HELPERS_START")[1].split("// MAP_HELPERS_END")[0]
+    checks = r"""
+const assert=require('node:assert/strict'),v={x:.5,y:.5,scale:1000};
+assert.equal(selectionView(v,[.6,.6],640,520),v);
+assert.equal(selectionView(v,[.796,.5],640,520),v);
+assert.deepEqual(selectionView(v,[.797,.5],640,520),{x:.797,y:.5,scale:1000});
+assert.deepEqual(selectionView(v,[.5,.8],640,520),{x:.5,y:.8,scale:1000});
+"""
+    subprocess.run(["node", "-e", helpers + checks], check=True)
+
+
+def test_inspector_is_bounded_and_secondary_photo_metadata_collapsed():
+    from html.parser import HTMLParser
+
+    html = module(ROOT / "dashboard/embedding_atlas_assets.py").HTML
+
+    class Elements(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.tags = []
+
+        def handle_starttag(self, tag, attrs):
+            self.tags.append((tag, dict(attrs)))
+
+    elements = Elements()
+    elements.feed(html)
+    aside = next(attrs for tag, attrs in elements.tags if tag == "aside")
+    assert aside["tabindex"] == "0" and "similar photos" in aside["aria-label"]
+    for identifier in ["photoDetails", "browsePhotos", "comparison"]:
+        attrs = next(
+            attrs for tag, attrs in elements.tags if attrs.get("id") == identifier
+        )
+        assert "open" not in attrs
+    details = html.split('<details id="photoDetails">')[1].split("</details>")[0]
+    assert all(
+        'id="' + identifier + '"' in details
+        for identifier in ["key", "detail", "cropCaption"]
+    )
+    css = html.split("<style>")[1].split("</style>")[0]
+    assert '"map inspector" "plot plot"' in css
+    assert '"plot inspector"' not in css
+    assert "aside{grid-area:inspector;height:var(--explorer-height)" in css
+    assert "aside{height:auto;overflow:visible" in css
