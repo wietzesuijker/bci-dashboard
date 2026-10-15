@@ -178,3 +178,67 @@ def test_duplicate_botanist_label_keys_fail(tmp_path, second):
     )
     with pytest.raises(ValueError, match="Duplicate or conflicting"):
         module(ROOT / "labelling/export_embedding_atlas.py").export(tmp_path)
+
+
+def test_map_zoom_pan_and_tile_work_remain_bounded():
+    import shutil
+    import subprocess
+    if not shutil.which('node'):
+        pytest.skip('Node is needed to execute map geometry helpers')
+    html = module(ROOT / 'dashboard/embedding_atlas_assets.py').HTML
+    helpers = html.split('// MAP_HELPERS_START')[1].split('// MAP_HELPERS_END')[0]
+    checks = r'''
+const assert=require('node:assert/strict');
+let v={x:.5,y:.5,scale:256*2**17};
+for(let i=0;i<2000;i++)v=boundedView({...v,scale:v.scale/1.6},640,520);
+assert.ok(v.scale>=640);
+for(let i=0;i<2000;i++)v=boundedView({...v,scale:v.scale*1.6},640,520);
+assert.ok(v.scale<=256*2**19);
+for(const raw of [{x:Infinity,y:NaN,scale:0},{x:-1e200,y:1e200,scale:Infinity},{x:2,y:-4,scale:128}]){
+ const v=boundedView(raw,640,520),range=tileGeometry(v,640,520);
+ assert.ok(Object.values(v).every(Number.isFinite));
+ assert.ok(v.x>=0&&v.x<=1&&v.y>=0&&v.y<=1);
+ assert.ok(range.tiles.length<=128);
+ assert.ok(range.tiles.every(([x,y])=>x>=0&&y>=0&&x<2**range.z&&y<2**range.z));
+}
+for(const p of [{lat:90,lon:180},{lat:-90,lon:-180},{lat:NaN,lon:Infinity}]){
+ assert.ok(merc(p).every(x=>Number.isFinite(x)&&x>=0&&x<=1));
+}
+const cache=new Map();for(let i=0;i<2000;i++)cacheTile(cache,String(i),{});
+assert.ok(cache.size<=256);
+'''
+    subprocess.run(['node', '-e', helpers + checks], check=True)
+
+
+def test_failed_tiles_and_photo_keep_selection_usable_without_retry_loop():
+    import shutil
+    import subprocess
+    if not shutil.which('node'):
+        pytest.skip('Node is needed to execute network failure handling')
+    html = module(ROOT / 'dashboard/embedding_atlas_assets.py').HTML
+    script = html.split('<script>')[1].split('</script>')[0]
+    setup = r'''
+const assert=require('node:assert/strict');
+let imageRequests=0,pending=[];
+const elements=new Map();
+const context=new Proxy({}, {get:()=>()=>{}});
+function element(id){if(!elements.has(id))elements.set(id,{clientWidth:640,clientHeight:520,value:'',getContext:()=>context,replaceChildren(){},append(){},removeAttribute(){},setAttribute(){},addEventListener(){}});return elements.get(id)}
+const payload={points:[{key:'a',lat:9.1,lon:-79.8,xy:[0,0],rgb:[1,2,3],neighbours:[],image:'https://example.org/photo.jpg',group:'Labelled'}],provenance:{encoder:'test',versions:[],dimensions:3,projection:'PCA',input_count:1,excluded:{},sources:[]}};
+element('atlas-data').textContent=JSON.stringify(payload);
+global.document={getElementById:element,querySelectorAll:()=>[],createElement:()=>element('button')};
+global.devicePixelRatio=1;global.location={hash:''};global.history={replaceState(){}};global.window={addEventListener(){}};
+global.requestAnimationFrame=f=>{pending.push(f)};
+global.Image=class{set src(v){imageRequests++;this.complete=true;this.naturalWidth=0;if(this.onerror)this.onerror()}};
+'''
+    checks = r'''
+const requestsAfterInitialDraw=imageRequests;
+for(let i=0;i<20&&pending.length;i++)pending.shift()();
+assert.equal(imageRequests,requestsAfterInitialDraw);
+assert.equal(pending.length,0);
+assert.match(element('basemapStatus').textContent,/Basemap unavailable/);
+assert.equal(element('key').textContent,'a');
+element('photo').onerror();
+assert.equal(element('photo').hidden,true);
+assert.match(element('photoStatus').textContent,/Photo unavailable/);
+'''
+    subprocess.run(['node', '-e', setup + script + checks], check=True)
