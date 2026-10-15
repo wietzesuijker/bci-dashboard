@@ -50,10 +50,10 @@ compareSelection(P[selected].key);list();showAtlasView('models');assert.equal($(
 $('workspaceReviewNote').value='Undownloaded outside note';$('workspaceReviewNote').oninput();const prior={hash:location.hash,pair:photoPair,note:$('workspaceReviewNote').value};$('search').value='opaque impossible search';$('group').value='Without recorded label';
 $('browseComparablePhotos').onclick();assert.equal($('search').value,'');assert.equal($('group').value,'All frames');assert.equal($('sharedBrowseScope').checked,true);assert.equal(browseSharedOnly,true);assert.equal(visible.length,171);assert.equal(selected,0);assert.equal(location.hash,prior.hash);assert.equal(photoPair,prior.pair);assert.equal($('workspaceReviewNote').value,prior.note);assert.equal($('browsePhotos').open,true);assert.equal(document.activeElement,$('browsePhotosSummary'));assert.equal($('results').children[0]['data-frame'],P[0].key);
 moveBrowsePage(1);assert.equal(browsePage,1);const card=$('results').children[1],chosenKey=card['data-frame'];assert.match(card['aria-label'],/^Select this photo/);card.focus();card.onclick();
-assert.equal(P[selected].key,chosenKey);assert.equal(location.hash,frameHash(chosenKey));assert.equal($('browsePhotos').open,false);assert.equal($('showBrowsePhotos')['aria-expanded'],'false');assert.equal(atlasView,'photos');assert.equal(document.activeElement,$('selectedPhotoHeading'));assert.equal(browseSharedOnly,true);assert.equal(browsePage,1);assert.equal($('sharedBrowseScope').checked,true);
+assert.equal(P[selected].key,chosenKey);assert.equal(location.hash,frameHash(chosenKey));assert.equal($('browsePhotos').open,false);assert.equal($('showBrowsePhotos')['aria-expanded'],'false');assert.equal(atlasView,'models');assert.equal(document.activeElement,$('modelComparisonQueryKey'));assert.equal(browseSharedOnly,true);assert.equal(browsePage,1);assert.equal($('sharedBrowseScope').checked,true);
 showAtlasView('models');assert.equal($('comparisonModels').children.length,2);assert.equal($('browseComparablePhotos').hidden,true);assert.match($('modelComparisonQueryKey').textContent,new RegExp(chosenKey));
 $('showBrowsePhotos').onclick();assert.equal($('browsePhotos').open,true);assert.equal(browsePage,1);assert.equal(browseSharedOnly,true);assert.equal($('results').children[0]['data-frame'],chosenKey);
-selectGalleryPhoto(0);assert.equal($('workspaceReviewNote').value,'Undownloaded outside note');assert.equal(atlasView,'photos');
+selectGalleryPhoto(0);assert.equal($('workspaceReviewNote').value,'Undownloaded outside note');assert.equal(atlasView,'models');assert.equal(document.activeElement,$('modelComparisonQueryKey'));
 """
     run_atlas(points, checks, initial_hash="#frame=" + OUTSIDE_KEY)
 
@@ -97,3 +97,19 @@ def test_gallery_markup_keeps_primary_closed_default_and_large_uncropped_preview
     assert "max-height:clamp(340px,58svh,640px)" in css
     assert "#results{grid-template-columns:1fr}" in css
     assert "height:clamp(360px,42vh,560px)" in css
+
+
+def test_gallery_cancel_and_reopen_follow_active_workspace_without_stale_destination():
+    points, comparison = gallery_fixture()
+    checks = "data.comparison=" + json.dumps(comparison) + r""";
+compareSelection(P[selected].key);list();$('similarMissionMode').value='other';$('similarMissionMode').onchange();$('workspaceReviewNote').value='Retain this note';$('workspaceReviewNote').oninput();
+const prior={selected,hash:location.hash,pair:photoPair,rank:photoPair.rank,mode:neighborMode,note:$('workspaceReviewNote').value};
+showAtlasView('models');$('browseComparablePhotos').onclick();moveBrowsePage(1);assert.equal($('closeBrowsePhotos').textContent,'Back to model comparison');$('closeBrowsePhotos').onclick();
+assert.equal(atlasView,'models');assert.equal(document.activeElement,$('modelComparisonQueryKey'));assert.equal($('browsePhotos').open,false);assert.equal(browsePage,1);assert.equal(browseSharedOnly,true);assert.equal(selected,prior.selected);assert.equal(location.hash,prior.hash);assert.equal(photoPair,prior.pair);assert.equal(photoPair.rank,prior.rank);assert.equal(neighborMode,prior.mode);assert.equal($('workspaceReviewNote').value,prior.note);
+showAtlasView('photos');$('showBrowsePhotos').onclick();assert.equal($('closeBrowsePhotos').textContent,'Back to selected photo');assert.equal(browseSharedOnly,true);assert.equal(browsePage,1);$('results').children[1].onclick();assert.equal(atlasView,'photos');assert.equal(document.activeElement,$('selectedPhotoHeading'));assert.equal(browseSharedOnly,true);assert.equal(browsePage,1);
+showAtlasView('models');$('showBrowsePhotos').onclick();assert.equal($('closeBrowsePhotos').textContent,'Back to model comparison');$('browsePhotos').open=false;$('browsePhotos').ontoggle();assert.equal($('showBrowsePhotos')['aria-expanded'],'false');
+showAtlasView('photos');$('showBrowsePhotos').onclick();assert.equal($('closeBrowsePhotos').textContent,'Back to selected photo');$('closeBrowsePhotos').onclick();assert.equal(atlasView,'photos');assert.equal(document.activeElement,$('selectedPhotoHeading'));
+showAtlasView('models');$('showBrowsePhotos').onclick();showAtlasView('photos');assert.equal($('closeBrowsePhotos').textContent,'Back to selected photo');$('closeBrowsePhotos').onclick();assert.equal(atlasView,'photos');
+showAtlasView('locations');$('showBrowsePhotos').onclick();assert.equal($('closeBrowsePhotos').textContent,'Back to selected photo');$('results').children[0].onclick();assert.equal(atlasView,'photos');assert.equal(document.activeElement,$('selectedPhotoHeading'));
+"""
+    run_atlas(points, checks, initial_hash="#frame=" + OUTSIDE_KEY)
