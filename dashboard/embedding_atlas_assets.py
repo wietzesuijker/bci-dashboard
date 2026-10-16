@@ -115,7 +115,7 @@ function renderSharedInspection(){
 function openSharedInspection(key,modelIndex,rank,returnFocus=document.activeElement){
  const comparison=data.comparison,candidates=comparison?sharedModelCandidates(comparison,key,modelIndex):[];
  if(!Number.isInteger(rank)||rank<0||rank>=candidates.length)return false;
- sharedInspection={queryKey:key,modelIndex,rank,candidates,comparison,returnFocus};renderSharedInspection();$('sharedInspectionDialog').showModal();return true;
+ sharedInspection={queryKey:key,modelIndex,rank,candidates,comparison,returnFocus};renderSharedInspection();$('sharedInspectionDialog').showModal();$('sharedInspectionDialog').scrollTop=0;return true;
 }
 function moveSharedInspection(step){if(!sharedInspection)return;const next=sharedInspection.rank+step;if(next<0||next>=sharedInspection.candidates.length)return;const focused=document.activeElement;sharedInspection.rank=next;renderSharedInspection();if((focused===$('sharedInspectionPrevious')||focused===$('sharedInspectionNext'))&&focused.disabled)$('sharedInspectionRank').focus({preventScroll:true})}
 $('sharedInspectionPrevious').onclick=()=>moveSharedInspection(-1);$('sharedInspectionNext').onclick=()=>moveSharedInspection(1);$('sharedInspectionClose').onclick=()=>$('sharedInspectionDialog').close();
@@ -266,7 +266,7 @@ function openPhotoComparison(rank=null,returnFocus=document.activeElement){
  ensurePhotoPair();
  if(rank!==null&&!setWorkspaceCandidate(rank))return false;
  saveWorkspaceReviewNote();photoComparison=rank===null?{...photoPair,rank:null}:photoPair;photoComparison.returnFocus=returnFocus;
- renderComparisonPhoto('comparisonQuery',photoComparison.query);renderPhotoComparison();$('photoComparison').showModal();return true;
+ renderComparisonPhoto('comparisonQuery',photoComparison.query);renderPhotoComparison();$('photoComparison').showModal();$('photoComparison').scrollTop=0;return true;
 }
 function movePhotoComparison(step){if(!photoComparison||photoComparison.rank===null)return;const next=photoComparison.rank+step;if(next<0||next>=photoComparison.candidates.length)return;saveReviewNote();photoComparison.rank=next;renderPhotoComparison();if(photoComparison===photoPair)renderWorkspacePair()}
 $('workspacePreviousCandidate').onclick=()=>moveWorkspaceCandidate(-1);$('workspaceNextCandidate').onclick=()=>moveWorkspaceCandidate(1);
