@@ -1,9 +1,10 @@
 """The primary photo pair remains authoritative across views and handoffs."""
 
+import runpy
 from html.parser import HTMLParser
 from pathlib import Path
-import runpy
 
+import pytest
 from test_atlas_mission_view import photo, run_atlas
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -97,3 +98,13 @@ assert.equal($('locationsView').hidden,false);
 assert.equal($('photosView').hidden,true);
 assert.equal(P[selected].key,'requested');
 """, initial_hash="#frame=requested&view=locations")
+
+
+@pytest.mark.parametrize("requested_view,expected", [("models", "models"), ("unknown", "photos")])
+def test_view_deep_links_open_the_requested_workspace_with_the_exact_photo(requested_view, expected):
+    run_atlas(workspace_points(), """
+assert.equal(atlasView, __EXPECTED__);assert.equal(P[selected].key,'requested');
+assert.equal($('modelComparisonView').hidden,atlasView!=='models');
+assert.equal($('photosView').hidden,atlasView!=='photos');
+assert.equal($('locationsView').hidden,true);
+""".replace("__EXPECTED__", repr(expected)), initial_hash="#frame=requested&view=" + requested_view)

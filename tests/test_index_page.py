@@ -108,9 +108,9 @@ def test_optional_atlas_cards_only_when_built(build_index, tmp_path):
     (tmp_path / 'embedding-atlas.html').write_text('<html>Atlas</html>')
     out = build_index.build(str(tmp_path))
     assert 'href="embedding-atlas.html"' in out
-    assert 'href="crownfirst-atlas.html"' not in out
+    assert 'href="crownfirst-atlas.html#view=models"' not in out
     (tmp_path / 'crownfirst-atlas.html').write_text('<html>Canopy</html>')
-    assert 'href="crownfirst-atlas.html"' in build_index.build(str(tmp_path))
+    assert 'href="crownfirst-atlas.html#view=models"' in build_index.build(str(tmp_path))
 
 
 def test_taxonomy_explorer_is_first_when_built(build_index, tmp_path):
@@ -120,4 +120,4 @@ def test_taxonomy_explorer_is_first_when_built(build_index, tmp_path):
     out = build_index.build(str(tmp_path))
     assert out.index('href="explorer.html"') < out.index('href="model_health_dashboard.html"')
     assert out.index('href="model_health_dashboard.html"') < out.index('href="embedding-atlas.html"')
-    assert out.index('<summary>Research views</summary>') < out.index('href="embedding-atlas.html"')
+    assert out.index('<summary>Similar photos &amp; models</summary>') < out.index('href="embedding-atlas.html"')

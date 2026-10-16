@@ -37,8 +37,8 @@ PAGES = [
 
 OPTIONAL_PAGES = [
     ("explorer.html", "Browse canopy photos by taxonomy", "Explore families, genera and species using Pl@ntNet first guesses or recorded labels, then inspect whole photos."),
-    ("embedding-atlas.html", "Explore Pl@ntNet frame representations", "Link camera positions to visual relationships and inspect similar frames."),
-    ("crownfirst-atlas.html", "Explore Crownfirst canopy representations", "Inspect the separate PlantCLEF canopy feature space across BCI camera positions."),
+    ("embedding-atlas.html", "Find similar photos", "Pl@ntNet. Browse photos that look alike."),
+    ("crownfirst-atlas.html", "Compare Pl@ntNet and PlantCLEF", "Inspect each model’s visual matches for the same photos."),
 ]
 
 STYLE = """*{box-sizing:border-box;margin:0;padding:0}
@@ -89,12 +89,13 @@ def build(build_dir: str) -> str:
         path = os.path.join(build_dir, name)
         with open(path, encoding="utf-8") as fh:
             stamp = stamp or build_stamp(fh.read())
-        cards.append(f'<a class="card" href="{html.escape(name)}">'
+        destination = name + "#view=models" if name == "crownfirst-atlas.html" else name
+        cards.append(f'<a class="card" href="{html.escape(destination)}">'
                      f'<b>{html.escape(title)}</b>'
                      f'<span>{html.escape(blurb)}</span></a>')
     if explorer and research:
         split = len(explorer) + len(PAGES)
-        cards = cards[:split] + ['<details><summary>Research views</summary>'
+        cards = cards[:split] + ['<details><summary>Similar photos &amp; models</summary>'
                                  + "".join(cards[split:]) + '</details>']
     return ("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
             "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
