@@ -88,3 +88,12 @@ def test_workspace_markup_has_unique_ids_global_warning_and_selected_first_mobil
     assert ".primary-panel[aria-labelledby=selectedPhotoHeading]{order:1}" in css
     assert ".candidate-controls{order:2}" in css
     assert ".primary-panel[aria-labelledby=workspaceCandidateHeading]{order:3}" in css
+
+
+def test_camera_location_deep_link_keeps_requested_photo():
+    run_atlas(workspace_points(), r"""
+assert.equal(atlasView,'locations');
+assert.equal($('locationsView').hidden,false);
+assert.equal($('photosView').hidden,true);
+assert.equal(P[selected].key,'requested');
+""", initial_hash="#frame=requested&view=locations")

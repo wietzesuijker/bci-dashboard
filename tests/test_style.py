@@ -71,9 +71,14 @@ def test_every_class_a_builder_writes_has_a_rule_in_the_stylesheet(style):
         # dashboard stylesheet a panel can assume.
         if name in ("style.py", "build_index.py", "embedding_atlas_assets.py"):
             continue
+        # The standalone explorer owns its CSS; panel fragments use style.py.
+        embedded = (re.search(r"<style>(.*?)</style>", src, re.DOTALL)
+                    if name == "explorer_assets.py" else None)
+        page_css = (set(_CLASS_RE.findall(re.sub(r"\{[^}]*\}", "", embedded.group(1))))
+                    if embedded else css)
         for m in _EMITTED_RE.finditer(src):
             for cls in m.group(1).split():
-                if cls not in css:
+                if cls not in page_css:
                     missing.setdefault(cls, name)
     assert not missing, f"classes written with no rule to style them: {missing}"
 

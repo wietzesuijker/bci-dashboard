@@ -84,6 +84,8 @@ python3 dashboard/build_external.py \
 python3 dashboard/build_internal.py \
   --out "$REPO/build/label_queue_dashboard.html" --generated "$TODAY"
 
+bash "$REPO/bin/build_explorer.sh"
+
 if [ "$BEFORE" = "$AFTER" ]; then
   rm "$BAK"
   [ -f "$BAK.provenance.txt" ] && mv "$BAK.provenance.txt" "$SIDECAR"

@@ -1,6 +1,14 @@
 # BCI dashboard
 
-Two self-contained HTML pages, built offline from files already on disk: a
+**Browse canopy photos by taxonomy.** A desktop-first photo catalogue, independent of which photos have model representations. Browse family, genus and species using either recorded labels or Pl@ntNet's first returned guess, then inspect the whole photo and its available evidence. Predictions retain their own recorded or unknown version; representation versions do not identify prediction versions.
+
+```bash
+bash bin/build_explorer.sh  # writes build/explorer.json and build/explorer.html offline
+```
+
+The explorer includes photos without predictions or similarity data. Family and genus are taxonomic parents of the first species guess, not independent predictions at those ranks. Its counts describe photos, not tree abundance or verified species occurrences. `bin/refresh.sh` rebuilds the explorer when refreshing the operational pages.
+
+Two operational HTML pages, built offline from files already on disk: a
 Labelbox export of botanist labels, plus cached Pl@ntNet responses. Each page is
 one file you can open, email, or drop on a share.
 

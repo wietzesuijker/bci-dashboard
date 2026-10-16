@@ -36,6 +36,7 @@ PAGES = [
 ]
 
 OPTIONAL_PAGES = [
+    ("explorer.html", "Browse canopy photos by taxonomy", "Explore families, genera and species using Pl@ntNet first guesses or recorded labels, then inspect whole photos."),
     ("embedding-atlas.html", "Explore Pl@ntNet frame representations", "Link camera positions to visual relationships and inspect similar frames."),
     ("crownfirst-atlas.html", "Explore Crownfirst canopy representations", "Inspect the separate PlantCLEF canopy feature space across BCI camera positions."),
 ]
@@ -55,6 +56,7 @@ a.card{
 a.card:hover{border-color:#1565c0}
 a.card b{display:block;font-size:1.05rem;color:#1565c0;margin-bottom:4px}
 a.card span{font-size:0.9rem;color:#424242}
+details{margin-top:24px}summary{cursor:pointer;margin-bottom:12px;color:#424242}
 """
 
 
@@ -79,7 +81,10 @@ def build_stamp(text: str) -> str:
 def build(build_dir: str) -> str:
     cards = []
     stamp = ""
-    available = PAGES + [page for page in OPTIONAL_PAGES if os.path.isfile(os.path.join(build_dir, page[0]))]
+    optional = [page for page in OPTIONAL_PAGES if os.path.isfile(os.path.join(build_dir, page[0]))]
+    explorer = [page for page in optional if page[0] == "explorer.html"]
+    research = [page for page in optional if page[0] != "explorer.html"]
+    available = explorer + PAGES + research
     for name, title, blurb in available:
         path = os.path.join(build_dir, name)
         with open(path, encoding="utf-8") as fh:
@@ -87,6 +92,10 @@ def build(build_dir: str) -> str:
         cards.append(f'<a class="card" href="{html.escape(name)}">'
                      f'<b>{html.escape(title)}</b>'
                      f'<span>{html.escape(blurb)}</span></a>')
+    if explorer and research:
+        split = len(explorer) + len(PAGES)
+        cards = cards[:split] + ['<details><summary>Research views</summary>'
+                                 + "".join(cards[split:]) + '</details>']
     return ("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
             "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
             "<title>BCI tree identification dashboards</title>"
